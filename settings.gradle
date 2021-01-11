@@ -1,0 +1,2 @@
+rootProject.name='HLS'
+include ':app'
