@@ -10,6 +10,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
 import android.os.IBinder;
 import android.text.format.DateUtils;
 import android.util.Log;
@@ -17,6 +19,9 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
+import com.arthenica.mobileffmpeg.Config;
+import com.arthenica.mobileffmpeg.ExecuteCallback;
+import com.arthenica.mobileffmpeg.FFmpeg;
 import com.tonyodev.fetch2.Download;
 import com.tonyodev.fetch2.Error;
 import com.tonyodev.fetch2.Fetch;
@@ -26,21 +31,28 @@ import com.tonyodev.fetch2.HttpUrlConnectionDownloader;
 import com.tonyodev.fetch2.NetworkType;
 import com.tonyodev.fetch2.Priority;
 import com.tonyodev.fetch2.Request;
+import com.tonyodev.fetch2.Status;
 import com.tonyodev.fetch2core.DownloadBlock;
 import com.tonyodev.fetch2core.Downloader;
 import com.tonyodev.fetch2core.Func;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.io.File;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import static androidx.core.app.NotificationCompat.PRIORITY_MIN;
+import static com.arthenica.mobileffmpeg.Config.RETURN_CODE_CANCEL;
+import static com.arthenica.mobileffmpeg.Config.RETURN_CODE_SUCCESS;
 
 public class HLSService extends Service {
 
@@ -51,7 +63,7 @@ public class HLSService extends Service {
     public static final String ACTION_PAUSE = "ACTION_PAUSE";
     public static final String ACTION_CANCEL = "ACTION_CANCEL";
 
-    String TAG = "HLSService", channel_id = "Download", url = "", file = "";
+    String TAG = "HLSService", channel_id = "Download";
     NotificationManager notificationManager;
     NotificationCompat.Builder notificationBuilder;
     int dur_flag = 0, final_duration = 0;
@@ -63,12 +75,17 @@ public class HLSService extends Service {
     FetchListener fetchListener;
     int max_retries = 5;
     Map<Integer, Integer> retries;
+    String[] ts_names;
+    Map<Integer, Map<Integer, Map<String, Long>>> groups;
+    Map<Integer ,Map<String, Object>> group_files;
+    Handler h;
+    Runnable groupProgressThread;
 
     @Override
     public void onCreate() {
-        notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        h = new Handler();
 
-        Log.d(TAG, "Build Greater");
+        notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         NotificationChannel notificationChannel = new NotificationChannel(channel_id, "HLS Service", NotificationManager.IMPORTANCE_DEFAULT);
 
         // Configure the notification channel.
@@ -110,6 +127,7 @@ public class HLSService extends Service {
                 .setContentInfo("Info");
 
         FetchConfiguration fetchConfiguration = new FetchConfiguration.Builder(this)
+                .enableLogging(true)
                 .enableRetryOnNetworkGain(true)
                 .setDownloadConcurrentLimit(8)
                 .setHttpDownloader(new HttpUrlConnectionDownloader(Downloader.FileDownloaderType.PARALLEL))
@@ -119,6 +137,8 @@ public class HLSService extends Service {
 
         notif_ids = new HashSet<>();
         retries = new HashMap<>();
+        groups = new HashMap<>();
+        group_files = new HashMap<>();
 
         fetchListener = new FetchListener() {
             @Override
@@ -139,13 +159,66 @@ public class HLSService extends Service {
             @Override
             public void onCompleted(@NotNull Download download) {
                 int download_id = download.getId();
+                int group_id = download.getGroup();
                 Log.d(TAG, "Download Completed " + download_id);
-                notificationBuilder.setContentText("Downloading Completed")
-                        .setOngoing(false)
-                        .setSmallIcon(R.drawable.done_icon)
-                        .setProgress(0,0,false);
-                notificationManager.notify(download_id, notificationBuilder.build());
-                fetch.remove(download_id);
+                fetch.getDownloadsInGroupWithStatus(group_id, Collections.singletonList(Status.COMPLETED), new Func<List<Download>>() {
+                    @Override
+                    public void call(@NotNull List<Download> result) {
+                        if (result.size() == groups.get(group_id).keySet().size()) {
+                            notificationBuilder.setContentText("Encoding")
+                                    .setOngoing(true)
+                                    .setSmallIcon(R.drawable.refresh_icon)
+                                    .setProgress(0,0,true);
+                            notificationManager.notify(group_id, notificationBuilder.build());
+
+                            Map<String, Object> file_info = group_files.get(group_id);
+                            String type = (String) file_info.get("type");
+
+                            if (type.equals("mp4")) {
+                                notificationBuilder.setContentText("Download Completed!")
+                                        .setOngoing(false)
+                                        .setSmallIcon(R.drawable.done_icon)
+                                        .setProgress(0,0,false);
+                                notificationManager.notify(group_id, notificationBuilder.build());
+                                fetch.removeGroup(group_id);
+                                return;
+                            }
+
+                            String[] ts_names = (String[]) file_info.get("ts_names");
+                            String fname = (String) file_info.get("fname");
+
+                            String ts_joined = String.join("|", ts_names);
+                            String command = "-i 'concat:" + ts_joined + "' -c copy " + fname;
+                            Log.d(TAG, "FFMPEG Command: " + command);
+                            long executionId = FFmpeg.executeAsync(command, new ExecuteCallback() {
+
+                                @Override
+                                public void apply(final long executionId, final int returnCode) {
+                                    if (returnCode == RETURN_CODE_SUCCESS) {
+                                        Log.d(Config.TAG, "Async command execution completed successfully.");
+                                        notificationBuilder.setContentText("Download Completed!")
+                                                .setOngoing(false)
+                                                .setSmallIcon(R.drawable.done_icon)
+                                                .setProgress(0,0,false);
+                                        notificationManager.notify(group_id, notificationBuilder.build());
+                                        for (String ts : ts_names) {
+                                            File f = new File(ts);
+                                            boolean ifDeleted = f.delete();
+                                            if (!ifDeleted) {
+                                                Log.e(TAG, "Error Deleting File: " + ts);
+                                            }
+                                        }
+                                    } else if (returnCode == RETURN_CODE_CANCEL) {
+                                        Log.d(Config.TAG, "Async command execution cancelled by user.");
+                                    } else {
+                                        Log.d(Config.TAG, String.format("Async command execution failed with returnCode=%d.", returnCode));
+                                    }
+                                }
+                            });
+                            fetch.removeGroup(group_id);
+                        }
+                    }
+                });
             }
 
             @Override
@@ -153,11 +226,11 @@ public class HLSService extends Service {
             {
                 Log.e(TAG, "Error: " + error.toString());
                 Integer download_id = download.getId();
-                notificationBuilder.setContentText("Stopped!")
-                        .setSmallIcon(R.drawable.cancel_icon)
-                        .setOngoing(false)
-                        .setProgress(0,0,false);
-                notificationManager.notify(download_id, notificationBuilder.build());
+//                notificationBuilder.setContentText("Stopped!")
+//                        .setSmallIcon(R.drawable.cancel_icon)
+//                        .setOngoing(false)
+//                        .setProgress(0,0,false);
+//                notificationManager.notify(download_id, notificationBuilder.build());
 
                 if(!(retries.containsKey(download_id))) {
                     retries.put(download_id, max_retries);
@@ -175,7 +248,7 @@ public class HLSService extends Service {
                                 .setSmallIcon(R.drawable.cancel_icon)
                                 .setOngoing(false)
                                 .setProgress(0,0,false);
-                        notificationManager.notify(download_id, notificationBuilder.build());
+                        notificationManager.notify(download.getGroup(), notificationBuilder.build());
                     }
                 } catch (NullPointerException e) {
                     Log.e(TAG, e.getMessage());
@@ -195,27 +268,20 @@ public class HLSService extends Service {
 
             @Override
             public void onProgress(@NotNull Download download, long etaInMilliSeconds, long downloadedBytesProgress) {
-                long eta = etaInMilliSeconds / 1000;
+                int download_id = download.getId();
+                int group_id = download.getGroup();
+                Map<Integer, Map<String, Long>> group_map = groups.get(group_id);
+                Map<String, Long> download_map = group_map.get(download_id);
+
                 int progress = download.getProgress();
-                long scale = (long)(Math.log10(downloadedBytesProgress) / 3);
-                Double scaled_speed = downloadedBytesProgress / Math.pow(1000, scale);
-                df.setRoundingMode(RoundingMode.DOWN);
-                String speed = df.format(scaled_speed);
-                if(scale == 0) {
-                    speed += " B/s";
-                } else if (scale == 1) {
-                    speed += " KB/s";
-                } else if (scale == 2) {
-                    speed += " MB/s";
-                } else {
-                    speed += " GB/s";
-                }
-//                Log.d(TAG, "ETA: " + DateUtils.formatElapsedTime(eta) + " Downloaded Bytes: " + downloadedBytesProgress / 1024 + " Progress: " + progress);
-                notificationBuilder.setProgress(100, progress, false)
-                        .setSmallIcon(R.drawable.download_icon)
-                        .setOngoing(true)
-                        .setContentText("ETA: " + DateUtils.formatElapsedTime(eta) + " Speed: " + speed);
-                notificationManager.notify(download.getId(), notificationBuilder.build());
+
+                download_map.put("progress", (long) progress);
+                download_map.put("eta", etaInMilliSeconds);
+                download_map.put("speed", downloadedBytesProgress);
+                group_map.put(download_id, download_map);
+                groups.put(group_id, group_map);
+
+                h.post(groupProgressThread);
 
             }
 
@@ -232,13 +298,15 @@ public class HLSService extends Service {
             @Override
             public void onCancelled(@NotNull Download download) {
                 int download_id = download.getId();
-                Log.d(TAG, "Download Cancelled " + download_id);
+                int group_id = download.getGroup();
+
+                Log.d(TAG, "Download  " + download_id);
                 notificationBuilder.setProgress(0, 0, false)
                         .setSmallIcon(R.drawable.cancel_icon)
                         .setOngoing(false)
                         .setContentText("Cancelled!");
-                notificationManager.notify(download_id, notificationBuilder.build());
-                notif_ids.remove(download_id);
+                notificationManager.notify(group_id, notificationBuilder.build());
+                notif_ids.remove(group_id);
             }
 
             @Override
@@ -255,6 +323,47 @@ public class HLSService extends Service {
         };
 
         fetch.addListener(fetchListener);
+
+        groupProgressThread = new Runnable() {
+            @Override
+            public void run() {
+                for (int group_id: groups.keySet()) {
+                    Map<Integer, Map<String, Long>> group_map = groups.get(group_id);
+                    long total_progress = 0, eta = 0, speed = 0, avg_eta, avg_speed;
+                    for (int download_id: group_map.keySet()) {
+                        Map<String, Long> download_map = group_map.get(download_id);
+                        total_progress += download_map.get("progress");
+                        eta += download_map.get("eta");
+                        speed += download_map.get("speed");
+                    }
+                    int numDownloads = group_map.keySet().size();
+                    avg_eta = eta / numDownloads;
+                    avg_speed = speed / numDownloads;
+
+                    long eta_sec = avg_eta / 1000;
+                    long scale = (long)(Math.log10(avg_speed) / 3);
+                    Double scaled_speed = avg_speed / Math.pow(1000, scale);
+                    df.setRoundingMode(RoundingMode.DOWN);
+                    String formattedSpeed = df.format(scaled_speed);
+                    if(scale == 0) {
+                        formattedSpeed += " B/s";
+                    } else if (scale == 1) {
+                        formattedSpeed += " KB/s";
+                    } else if (scale == 2) {
+                        formattedSpeed += " MB/s";
+                    } else {
+                        formattedSpeed += " GB/s";
+                    }
+
+                    notificationBuilder.setProgress(100 * numDownloads, (int) total_progress, false)
+                            .setSmallIcon(R.drawable.download_icon)
+                            .setOngoing(true)
+                            .setContentText("ETA: " + DateUtils.formatElapsedTime(eta_sec) + " Speed: " + formattedSpeed);
+                    notificationManager.notify(group_id, notificationBuilder.build());
+                }
+            }
+        };
+        h.postDelayed(groupProgressThread, 1000);
     }
 
     @Override
@@ -264,32 +373,78 @@ public class HLSService extends Service {
         String action = intent.getAction();
         Log.d(TAG, "Action: " + action);
         Bundle bundle = intent.getExtras();
-        int download_id;
+        File dir_downloads = Environment.getExternalStorageDirectory();
+        String downloads = dir_downloads.getAbsolutePath() + "/Download/";
+        int download_id, action_id;
         if(action != null) {
             switch (action) {
                 case ACTION_ENQUEUE:
                     if (bundle != null) {
+                        String url, file, type;
                         url = bundle.getString("url");
                         file = bundle.getString("file");
-                        enqueueDownload(url, file);
+                        type = bundle.getString("type");
+                        int group_id = file.hashCode();
+                        if (type.equals("m3u8")) {
+                            ArrayList<String> ts_files = bundle.getStringArrayList("ts_files");
+                            ts_names = new String[ts_files.size()];
+                            int i = 0;
+                            Map<Integer, Map<String, Long>> group_map = new LinkedHashMap<>();
+                            for (String ts: ts_files.toArray(new String[ts_files.size()])) {
+                                i += 1;
+                                String fname = downloads + i + ".ts";
+                                download_id = enqueueDownload(ts, fname, group_id);
+                                Map<String, Long> download_map = new LinkedHashMap<>();
+                                download_map.put("progress", (long) -1);
+                                download_map.put("eta", (long) -1);
+                                download_map.put("speed", (long) -1);
+                                group_map.put(download_id, download_map);
+                                ts_names[i-1] = fname;
+                            }
+                            groups.put(group_id, group_map);
+
+                            Map<String, Object> file_info = new LinkedHashMap<>();
+                            file_info.put("ts_names", ts_names);
+                            file_info.put("fname", file.trim());
+                            file_info.put("type", type);
+                            group_files.put(group_id, file_info);
+                        } else {
+                            Map<Integer, Map<String, Long>> group_map = new LinkedHashMap<>();
+                            Map<String, Object> file_info = new LinkedHashMap<>();
+
+                            file_info.put("ts_names", null);
+                            file_info.put("fname", file.trim());
+                            file_info.put("type", type);
+                            group_files.put(group_id, file_info);
+
+                            download_id = enqueueDownload(url, file, group_id);
+
+                            Map<String, Long> download_map = new LinkedHashMap<>();
+                            download_map.put("progress", (long) -1);
+                            download_map.put("eta", (long) -1);
+                            download_map.put("speed", (long) -1);
+                            group_map.put(download_id, download_map);
+
+                            groups.put(group_id, group_map);
+                        }
                     }
                     break;
                 case ACTION_PAUSE:
                     if (bundle != null) {
-                        download_id = bundle.getInt("download_id");
-                        pauseDownload(download_id);
+                        action_id = bundle.getInt("group_id");
+                        pauseDownload(action_id);
                     }
                     break;
                 case ACTION_RESUME:
                     if (bundle != null) {
-                        download_id = bundle.getInt("download_id");
-                        resumeDownload(download_id);
+                        action_id = bundle.getInt("group_id");
+                        resumeDownload(action_id);
                     }
                     break;
                 case ACTION_CANCEL:
                     if (bundle != null) {
-                        download_id = bundle.getInt("download_id");
-                        fetch.cancel(download_id);
+                        action_id = bundle.getInt("group_id");
+                        fetch.cancelGroup(action_id);
                     }
                     break;
                 case ACTION_START_SERVICE:
@@ -318,91 +473,97 @@ public class HLSService extends Service {
         return START_STICKY;
     }
 
-    public NotificationCompat.Action getPauseAction(int download_id) {
+    public NotificationCompat.Action getPauseAction(int group_id) {
         Intent pauseServiceIntent = new Intent(this, HLSService.class);
         pauseServiceIntent.setAction(ACTION_PAUSE);
-        pauseServiceIntent.putExtra("download_id", download_id);
+        pauseServiceIntent.putExtra("group_id", group_id);
         PendingIntent pendingPauseIntent = PendingIntent.getService(this, 0, pauseServiceIntent, PendingIntent.FLAG_UPDATE_CURRENT);
         return new NotificationCompat.Action(R.drawable.pause_icon, "Pause", pendingPauseIntent);
     }
 
-    public NotificationCompat.Action getResumeAction(int download_id) {
+    public NotificationCompat.Action getResumeAction(int group_id) {
         Intent resumeServiceIntent = new Intent(this, HLSService.class);
         resumeServiceIntent.setAction(ACTION_RESUME);
-        resumeServiceIntent.putExtra("download_id", download_id);
+        resumeServiceIntent.putExtra("group_id", group_id);
         PendingIntent pendingResumeIntent = PendingIntent.getService(this, 0, resumeServiceIntent, PendingIntent.FLAG_UPDATE_CURRENT);
         return new NotificationCompat.Action(R.drawable.resume_icon, "Resume", pendingResumeIntent);
     }
 
-    public NotificationCompat.Action getCancelAction(int download_id) {
+    public NotificationCompat.Action getCancelAction(int group_id) {
         Intent cancelServiceIntent = new Intent(this, HLSService.class);
         cancelServiceIntent.setAction(ACTION_CANCEL);
-        cancelServiceIntent.putExtra("download_id", download_id);
+        cancelServiceIntent.putExtra("group_id", group_id);
         PendingIntent pendingCancelIntent = PendingIntent.getService(this, 0, cancelServiceIntent, PendingIntent.FLAG_UPDATE_CURRENT);
         return new NotificationCompat.Action(R.drawable.pause_icon, "Cancel", pendingCancelIntent);
     }
 
-    public void enqueueDownload(String url, String file) {
+    @SuppressLint("RestrictedApi")
+    public int enqueueDownload(String url, String file, int group_id) {
         Log.d(TAG, "URL: " + url);
         Log.d(TAG, "File: " + file);
         final Request request = new Request(url, file);
         request.setPriority(Priority.HIGH);
         request.setNetworkType(NetworkType.ALL);
+        request.setGroupId(group_id);
 //        request.addHeader("clientKey", "SD78DF93_3947&MVNGHE1WONG");
+        final int download_id = request.getId();
 
         fetch.enqueue(request, updatedRequest -> {
             //Request was successfully enqueued for download.
             Log.d(TAG, "Requested Enqueued: " + request.getUrl());
-            int download_id = request.getId();
             Log.d(TAG, "Request ID: " + download_id);
-            notif_ids.add(download_id);
+            notif_ids.add(group_id);
 
-            notificationBuilder.setProgress(100, 0, false)
-                                .addAction(getPauseAction(download_id))
-                                .addAction(getCancelAction(download_id));
-            notificationManager.notify(download_id, notificationBuilder.build());
+            notificationBuilder.mActions.clear();
+            notificationBuilder.setProgress(0, 0, true)
+                                .addAction(getPauseAction(group_id))
+                                .addAction(getCancelAction(group_id));
+            notificationManager.notify(group_id, notificationBuilder.build());
+
         }, error -> {
             //An error occurred enqueuing the request.
             Log.e(TAG, error.toString());
         });
+        return download_id;
     }
 
     @SuppressLint("RestrictedApi")
-    public void pauseDownload(int download_id) {
-        fetch.pause(download_id);
+    public void pauseDownload(int group_id) {
+        fetch.pauseGroup(group_id);
 
         notificationBuilder.mActions.clear();
         notificationBuilder.setContentText("Paused!")
-                .addAction(getResumeAction(download_id))
-                .addAction(getCancelAction(download_id));
-        notificationManager.notify(download_id, notificationBuilder.build());
+                .addAction(getResumeAction(group_id))
+                .addAction(getCancelAction(group_id));
+        notificationManager.notify(group_id, notificationBuilder.build());
     }
 
     @SuppressLint("RestrictedApi")
-    public void resumeDownload(int download_id) {
-        fetch.resume(download_id);
+    public void resumeDownload(int group_id) {
+        fetch.resumeGroup(group_id);
 
         notificationBuilder.mActions.clear();
         notificationBuilder.setContentText("Resuming...")
-                .addAction(getPauseAction(download_id))
-                .addAction(getCancelAction(download_id));
-        notificationManager.notify(download_id, notificationBuilder.build());
+                .addAction(getPauseAction(group_id))
+                .addAction(getCancelAction(group_id));
+        notificationManager.notify(group_id, notificationBuilder.build());
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
         fetch.cancelAll();
-        fetch.deleteAll();
+        fetch.removeAll();
         fetch.close();
-        for (Integer notif_id: notif_ids) {
-            notificationBuilder.setContentText("Downloading Stopped!")
-                    .setSmallIcon(R.drawable.cancel_icon)
-                    .setOngoing(false)
-                    .setProgress(0,0,false);
-            notificationManager.notify(notif_id, notificationBuilder.build());
-        }
+//        for (Integer notif_id: notif_ids) {
+//            notificationBuilder.setContentText("Downloading Stopped!")
+//                    .setSmallIcon(R.drawable.cancel_icon)
+//                    .setOngoing(false)
+//                    .setProgress(0,0,false);
+//            notificationManager.notify(notif_id, notificationBuilder.build());
+//        }
         Log.d(TAG, "Fetched Closed!");
+        notificationManager.cancelAll();
 //        fetch.removeListener(fetchListener);
     }
 

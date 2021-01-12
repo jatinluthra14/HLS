@@ -41,9 +41,7 @@ import androidx.core.app.ActivityCompat;
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.IOException;
-import java.math.BigInteger;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Queue;
@@ -64,6 +62,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     Button goButton;
     Map<String, Map<String, Object>> hlsStack;
     Map<String, String> streamStack;
+    Map<String, ArrayList<String>> m3u8_ts_map;
     Queue<String> allRequests, mediaRequests;
     String selected_path, current_url = "", view_mode = "mobile", TAG="WebView", RequestTAG="Request_WebView", okhttpTAG = "Okhttp_WebView";
     TextView bubble_text;
@@ -77,49 +76,20 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
             Manifest.permission.WRITE_EXTERNAL_STORAGE
     };
 
-    public int indexOf(byte[] outerArray, byte[] smallerArray) {
-        for(int i = 0; i < outerArray.length - smallerArray.length+1; ++i) {
-            boolean found = true;
-            for(int j = 0; j < smallerArray.length; ++j) {
-                if (outerArray[i+j] != smallerArray[j]) {
-                    found = false;
-                    break;
-                }
-            }
-            if (found) return i;
-        }
-        return -1;
-    }
-
-    public String processM3U8Url(String line, String orig_url) {
-        String final_url = line.trim();
-        if (!(final_url.startsWith("http"))) {
-            if (final_url.startsWith("/")) {
-                final_url = Uri.parse(orig_url).getHost() + final_url;
-            } else {
-                String strip_orig = Uri.parse(orig_url).buildUpon().clearQuery().build().toString();
-                String[] segments = strip_orig.split("/");
-                segments[segments.length - 1] = final_url;
-                final_url = String.join("/", segments);
-            }
-        }
-        return final_url;
-    }
-
     static OkHttpClient client = new OkHttpClient();
 
     void get_request(String url, String orig_url){
         if (!(url.equals(orig_url)))
             Log.d(TAG, "Called Get_Request with Url: " + url + " Orig_URL: " + orig_url);
         else {
-            if (streamStack.containsKey(Uri.parse(url.trim()).buildUpon().clearQuery().build().toString())) {
+            if (streamStack.containsKey(Util.clearQuery(url))) {
                 Log.d(TAG, "KEY FOUND STREAM STACK!");
                 return;
             }
         }
         if (!hlsStack.containsKey(orig_url.trim())) {
             Uri uri = Uri.parse(orig_url.trim());
-            String spath = uri.buildUpon().clearQuery().build().toString();
+            String spath = Util.clearQuery(orig_url);
             hlsStack.put(uri.toString(), new LinkedHashMap<String, Object>(){{put("duration", ""); put("uri", uri); put("strip_url", spath);}});
             if (spath.endsWith(".m3u8")) stream_flag = 1;
         }
@@ -145,7 +115,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                     @Override
                     public void onResponse(Call call, final Response response) throws IOException {
                         String req_url = response.request().url().toString();
-                        String sreq_url = Uri.parse(req_url).buildUpon().clearQuery().build().toString();
+                        String sreq_url = Util.clearQuery(req_url);
                         Map<String, Object> map = hlsStack.get(orig_url);
                         String spath = (String) map.get("strip_url");
 //                        Log.d(okhttpTAG, "Playlist: \n" + res);
@@ -170,10 +140,10 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                                     } else if (!(resolution.equals(""))) {
                                         String res_url = line.trim();
                                         map = hlsStack.get(orig_url);
-                                        String processed = processM3U8Url(res_url, orig_url);
+                                        String processed = Util.processM3U8Url(res_url, orig_url);
                                         map.put("res_" + resolution, processed);
                                         hlsStack.put(orig_url, map);
-                                        streamStack.put(Uri.parse(processed).buildUpon().clearQuery().build().toString(), orig_url);
+                                        streamStack.put(Util.clearQuery(processed), orig_url);
                                         resolution = "";
                                     }
                                 }
@@ -181,24 +151,34 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                                 for (String line : lines) {
                                     if (line.contains(".m3u8")) {
                                         Log.d(TAG, "Playlist URL: " + line);
-                                        String final_url = processM3U8Url(line, orig_url);
+                                        String final_url = Util.processM3U8Url(line, orig_url);
                                         Log.d(TAG, "Final Playlist URL: " + final_url);
                                         get_request(final_url, orig_url);
-                                        break;
                                     }
                                 }
                             } else if (res.contains("#EXTINF")) {
                                 String lines[] = res.split("\\r?\\n");
                                 Double total_duration = 0.0;
+                                ArrayList<String> ts_files = new ArrayList<>();
+                                int ts_flag = 0;
                                 for (String line : lines) {
                                     if (line.contains("#EXTINF")) {
                                         //                                    Log.d(okhttpTAG, "Segments: " + line);
                                         Double duration = Double.parseDouble(line.replace("#EXTINF:", "").replace(",", "").trim());
                                         total_duration += duration;
+                                        ts_flag = 1;
+                                    } else if (ts_flag == 1) {
+                                        String final_url = Util.processM3U8Url(line, sreq_url);
+                                        ts_files.add(final_url);
+                                        ts_flag = 0;
                                     }
                                 }
                                 String formatted_duration = DateUtils.formatElapsedTime(total_duration.longValue());
                                 Log.d(TAG, "Total Duration: " + formatted_duration + " for Orig URL: " + orig_url + " and URL: " + url);
+                                m3u8_ts_map.put(sreq_url, ts_files);
+                                for (String ts: ts_files.toArray(new String[ts_files.size()])) {
+                                    Log.d(TAG, sreq_url + " : " + ts);
+                                }
                                 map = hlsStack.get(orig_url);
                                 map.put("duration", formatted_duration);
                                 map.put("type", "m3u8");
@@ -221,7 +201,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                                 int j = Integer.parseInt(mvhd.substring(index, index + 2), 16);
                                 mvhd_buf[i] = (byte) j;
                             }
-                            int mvhd_idx = indexOf(buffer, mvhd_buf) + 17;
+                            int mvhd_idx = Util.indexOf(buffer, mvhd_buf) + 17;
                             StringBuilder sb = new StringBuilder();
                             for (int i=mvhd_idx; i<mvhd_idx+3; i++) {
                                 byte b = buffer[i];
@@ -303,22 +283,6 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         mediaRequests.add(media_path);
     }
 
-    public static String getMD5EncryptedString(String encTarget){
-        MessageDigest mdEnc = null;
-        try {
-            mdEnc = MessageDigest.getInstance("MD5");
-        } catch (NoSuchAlgorithmException e) {
-            System.out.println("Exception while encrypting to md5");
-            e.printStackTrace();
-        } // Encryption algorithm
-        mdEnc.update(encTarget.getBytes(), 0, encTarget.length());
-        String md5 = new BigInteger(1, mdEnc.digest()).toString(16);
-        while ( md5.length() < 32 ) {
-            md5 = "0" + md5;
-        }
-        return md5;
-    }
-
     @JavascriptInterface
     public void onData(String value) {
         //.. do something with the data
@@ -333,6 +297,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         bubble_text = findViewById(R.id.bubble_text);
         hlsStack = new LinkedHashMap<>();
         streamStack = new LinkedHashMap<>();
+        m3u8_ts_map = new LinkedHashMap<>();
         allRequests = new ConcurrentLinkedQueue<>();
         mediaRequests = new ConcurrentLinkedQueue<>();
 
@@ -385,8 +350,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 if (req_size > 0) {
                     String media_path = mediaRequests.poll();
                     if (media_path != null) {
-                        Uri uri = Uri.parse(media_path);
-                        String spath = uri.buildUpon().clearQuery().build().toString();
+                        String spath = Util.clearQuery(media_path);
                         if(spath.endsWith(".m3u8") && stream_flag==1) {
                             mediaRequests.add(media_path);
                             h2.postDelayed(this, 1000); //ms
@@ -500,8 +464,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         webView.setWebViewClient(new MyWebViewClient() {
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 String path = request.getUrl().toString().trim();
-                Uri uri = Uri.parse(path);
-                String spath = uri.buildUpon().clearQuery().build().toString();
+                String spath = Util.clearQuery(path);
                 allRequests.add(path);
                 Log.d(RequestTAG, path);
                 if (spath.endsWith(".m3u8") || spath.endsWith(".mp4") || spath.endsWith(".vid") && !(spath.endsWith(".ts"))) {
@@ -634,10 +597,10 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 break;
 
             case R.id.home:
-//                current_url = getString(R.string.domain_google);
+                current_url = getString(R.string.domain_google);
 //                current_url = "https://content.jwplatform.com/manifests/yp34SRmf.m3u8";
-                current_url = "https://file-examples-com.github.io/uploads/2017/04/file_example_MP4_1920_18MG.mp4";
-                current_url = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_30mb.mp4";
+//                current_url = "https://file-examples-com.github.io/uploads/2017/04/file_example_MP4_1920_18MG.mp4";
+//                current_url = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_30mb.mp4";
                 webView.loadUrl(current_url);
                 break;
 
@@ -686,6 +649,9 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                     public boolean onMenuItemClick(MenuItem item) {
                         String item_title = (String) item.getTitle();
                         selected_path = res_map.get(item_title.trim());
+                        for (String key: m3u8_ts_map.keySet()) {
+                            Log.d(TAG, "MAP KEY: " + key + " TS FILES: " + m3u8_ts_map.get(key).size());
+                        }
                         Toast.makeText(WebViewActivity.this,selected_path, Toast.LENGTH_LONG).show();
                         return true;
                     }
@@ -722,13 +688,19 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 if(selected_path!=null) {
                     File dir_downloads = Environment.getExternalStorageDirectory();
                     String downloads = dir_downloads.getAbsolutePath() + "/Download/";
-                    String file_hash = getMD5EncryptedString(selected_path);
-                    //                String ffmpeg_command = "-i \"" + selected_path + "\" -bsf:a aac_adtstoasc -vcodec copy -c copy " + downloads + file_hash + ".mp4";
-                    String ffmpeg_command = "-i \"" + selected_path + "\" -c copy " + downloads + file_hash + ".mp4";
+                    String file_hash = Util.getMD5EncryptedString(selected_path);
 
                     intent = new Intent(WebViewActivity.this, HLSService.class);
                     intent.putExtra("url", selected_path);
                     intent.putExtra("file", downloads + file_hash + ".mp4");
+                    String cleared_path = Util.clearQuery(selected_path);
+                    if (cleared_path.endsWith(".m3u8")) {
+                        Log.d(TAG, "Cleared Path: " + cleared_path + " TS FILES: " + m3u8_ts_map.get(cleared_path).size());
+                        intent.putExtra("type", "m3u8");
+                        intent.putStringArrayListExtra("ts_files", m3u8_ts_map.get(cleared_path));
+                    } else {
+                        intent.putExtra("type", "mp4");
+                    }
                     intent.setAction("ACTION_ENQUEUE");
                     startForegroundService(intent);
                 }
