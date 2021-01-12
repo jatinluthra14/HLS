@@ -1,15 +1,15 @@
 package com.example.hls;
 
+import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.IBinder;
 import android.text.format.DateUtils;
 import android.util.Log;
@@ -17,14 +17,8 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
-import com.arthenica.mobileffmpeg.Config;
-import com.arthenica.mobileffmpeg.ExecuteCallback;
-import com.arthenica.mobileffmpeg.FFmpeg;
-import com.arthenica.mobileffmpeg.LogCallback;
-import com.arthenica.mobileffmpeg.LogMessage;
-import com.arthenica.mobileffmpeg.Statistics;
-import com.arthenica.mobileffmpeg.StatisticsCallback;
 import com.tonyodev.fetch2.Download;
+import com.tonyodev.fetch2.Error;
 import com.tonyodev.fetch2.Fetch;
 import com.tonyodev.fetch2.FetchConfiguration;
 import com.tonyodev.fetch2.FetchListener;
@@ -34,31 +28,19 @@ import com.tonyodev.fetch2.Priority;
 import com.tonyodev.fetch2.Request;
 import com.tonyodev.fetch2core.DownloadBlock;
 import com.tonyodev.fetch2core.Downloader;
-import com.tonyodev.fetch2.Error;
 import com.tonyodev.fetch2core.Func;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.io.File;
-import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
 import static androidx.core.app.NotificationCompat.PRIORITY_MIN;
-import static com.arthenica.mobileffmpeg.Config.RETURN_CODE_CANCEL;
-import static com.arthenica.mobileffmpeg.Config.RETURN_CODE_SUCCESS;
 
 public class HLSService extends Service {
 
@@ -67,12 +49,12 @@ public class HLSService extends Service {
     public static final String ACTION_ENQUEUE = "ACTION_ENQUEUE";
     public static final String ACTION_RESUME = "ACTION_RESUME";
     public static final String ACTION_PAUSE = "ACTION_PAUSE";
-    public static final String ACTION_STOP = "ACTION_STOP";
+    public static final String ACTION_CANCEL = "ACTION_CANCEL";
 
-    String TAG = "HLSService", ffmpeg_command = "", channel_id = "Download", url = "", file = "";
+    String TAG = "HLSService", channel_id = "Download", url = "", file = "";
     NotificationManager notificationManager;
     NotificationCompat.Builder notificationBuilder;
-    int dur_flag = 0, final_duration=0, notif_id=0;
+    int dur_flag = 0, final_duration = 0;
     String duration = "";
     long currentMillis;
     private Fetch fetch;
@@ -86,24 +68,31 @@ public class HLSService extends Service {
     public void onCreate() {
         notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Log.d(TAG, "Build Greater");
-            NotificationChannel notificationChannel = new NotificationChannel(channel_id, "HLS Service", NotificationManager.IMPORTANCE_HIGH);
+        Log.d(TAG, "Build Greater");
+        NotificationChannel notificationChannel = new NotificationChannel(channel_id, "HLS Service", NotificationManager.IMPORTANCE_DEFAULT);
 
-            // Configure the notification channel.
-            notificationChannel.setDescription("HLS Download Progress");
-            notificationChannel.enableLights(true);
-            notificationChannel.setLightColor(Color.RED);
-            notificationChannel.setVibrationPattern(new long[]{0, 1000, 500, 1000});
-            notificationChannel.enableVibration(true);
-            notificationManager.createNotificationChannel(notificationChannel);
-        }
+        // Configure the notification channel.
+        notificationChannel.setDescription("HLS Download Progress");
+        notificationChannel.enableLights(true);
+        notificationChannel.setLightColor(Color.RED);
+        notificationChannel.setVibrationPattern(new long[]{0, 1000, 500, 1000});
+        notificationChannel.enableVibration(true);
+        notificationManager.createNotificationChannel(notificationChannel);
+
+        Intent stopServiceIntent = new Intent(this, HLSService.class);
+        stopServiceIntent.setAction(ACTION_STOP_SERVICE);
+        PendingIntent pendingPrevIntent = PendingIntent.getService(this, 0, stopServiceIntent, 0);
+        NotificationCompat.Action prevAction = new NotificationCompat.Action(R.drawable.stop_icon, "Stop", pendingPrevIntent);
+
         NotificationCompat.Builder forenotificationBuilder = new NotificationCompat.Builder(HLSService.this, channel_id);
         Notification notification = forenotificationBuilder.setOngoing(true)
                 .setSmallIcon(R.drawable.stream_icon)
                 .setPriority(PRIORITY_MIN)
                 .setCategory(Notification.CATEGORY_SERVICE)
+                .addAction(prevAction)
                 .build();
+
+
         startForeground(9999, notification);
 
         Log.d(TAG, "Service Started");
@@ -128,8 +117,8 @@ public class HLSService extends Service {
 
         fetch = Fetch.Impl.getInstance(fetchConfiguration);
 
-        notif_ids = new HashSet<Integer>();
-        retries = new HashMap<Integer, Integer>();
+        notif_ids = new HashSet<>();
+        retries = new HashMap<>();
 
         fetchListener = new FetchListener() {
             @Override
@@ -164,24 +153,33 @@ public class HLSService extends Service {
             {
                 Log.e(TAG, "Error: " + error.toString());
                 Integer download_id = download.getId();
-                notificationBuilder.setContentText("Downloading Stopped!")
+                notificationBuilder.setContentText("Stopped!")
                         .setSmallIcon(R.drawable.cancel_icon)
                         .setOngoing(false)
                         .setProgress(0,0,false);
-                notificationManager.notify((int) download_id, notificationBuilder.build());
+                notificationManager.notify(download_id, notificationBuilder.build());
 
                 if(!(retries.containsKey(download_id))) {
                     retries.put(download_id, max_retries);
                 }
-                int left_retries = retries.get(download_id);
-                Log.d(TAG, "Retries Left: " + left_retries);
-                if (left_retries > 0) {
-                    left_retries -= 1;
-                    retries.put(download_id, left_retries);
-                    Log.d(TAG, "Retrying Download: " + download_id);
-                    fetch.retry(download_id);
+                try {
+                    int left_retries = retries.get(download_id);
+                    Log.d(TAG, "Retries Left: " + left_retries);
+                    if (left_retries > 0) {
+                        left_retries -= 1;
+                        retries.put(download_id, left_retries);
+                        Log.d(TAG, "Retrying Download: " + download_id);
+                        fetch.retry(download_id);
+                    } else {
+                        notificationBuilder.setContentText("Failed!")
+                                .setSmallIcon(R.drawable.cancel_icon)
+                                .setOngoing(false)
+                                .setProgress(0,0,false);
+                        notificationManager.notify(download_id, notificationBuilder.build());
+                    }
+                } catch (NullPointerException e) {
+                    Log.e(TAG, e.getMessage());
                 }
-
             }
 
             @Override
@@ -197,12 +195,12 @@ public class HLSService extends Service {
 
             @Override
             public void onProgress(@NotNull Download download, long etaInMilliSeconds, long downloadedBytesProgress) {
-                Long eta = etaInMilliSeconds / 1000;
+                long eta = etaInMilliSeconds / 1000;
                 int progress = download.getProgress();
                 long scale = (long)(Math.log10(downloadedBytesProgress) / 3);
                 Double scaled_speed = downloadedBytesProgress / Math.pow(1000, scale);
                 df.setRoundingMode(RoundingMode.DOWN);
-                String speed = df.format(scaled_speed).toString();
+                String speed = df.format(scaled_speed);
                 if(scale == 0) {
                     speed += " B/s";
                 } else if (scale == 1) {
@@ -229,16 +227,18 @@ public class HLSService extends Service {
             @Override
             public void onResumed(@NotNull Download download) {
                 Log.d(TAG, "Download Resumed " + download.getId());
-                notificationBuilder.setContentText("Downloading Stopped!")
-                        .setSmallIcon(R.drawable.download_icon)
-                        .setOngoing(true)
-                        .setProgress(100,download.getProgress(),false);
-                notificationManager.notify((int) download.getId(), notificationBuilder.build());
             }
 
             @Override
             public void onCancelled(@NotNull Download download) {
-                Log.d(TAG, "Download Cancelled " + download.getId());
+                int download_id = download.getId();
+                Log.d(TAG, "Download Cancelled " + download_id);
+                notificationBuilder.setProgress(0, 0, false)
+                        .setSmallIcon(R.drawable.cancel_icon)
+                        .setOngoing(false)
+                        .setContentText("Cancelled!");
+                notificationManager.notify(download_id, notificationBuilder.build());
+                notif_ids.remove(download_id);
             }
 
             @Override
@@ -259,17 +259,46 @@ public class HLSService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        Log.d(TAG, "Start Command");
         if (intent == null) return START_NOT_STICKY;
         String action = intent.getAction();
+        Log.d(TAG, "Action: " + action);
+        Bundle bundle = intent.getExtras();
+        int download_id;
         if(action != null) {
             switch (action) {
                 case ACTION_ENQUEUE:
-                    Bundle bundle = intent.getExtras();
                     if (bundle != null) {
                         url = bundle.getString("url");
                         file = bundle.getString("file");
+                        enqueueDownload(url, file);
                     }
-                    enqueueDownload(url, file);
+                    break;
+                case ACTION_PAUSE:
+                    if (bundle != null) {
+                        download_id = bundle.getInt("download_id");
+                        pauseDownload(download_id);
+                    }
+                    break;
+                case ACTION_RESUME:
+                    if (bundle != null) {
+                        download_id = bundle.getInt("download_id");
+                        resumeDownload(download_id);
+                    }
+                    break;
+                case ACTION_CANCEL:
+                    if (bundle != null) {
+                        download_id = bundle.getInt("download_id");
+                        fetch.cancel(download_id);
+                    }
+                    break;
+                case ACTION_START_SERVICE:
+                    Log.d(TAG, "Service Started!");
+                    break;
+                case ACTION_STOP_SERVICE:
+                    Log.d(TAG, "Stopping Service");
+                    stopForeground(true);
+                    stopSelf();
                     break;
                 default:
                     break;
@@ -286,93 +315,32 @@ public class HLSService extends Service {
             }
         });
 
-//        fetch.cancelAll();
-//        fetch.deleteAll();
-
-//        long executionId = FFmpeg.executeAsync(ffmpeg_command, new ExecuteCallback() {
-//
-//            @Override
-//            public void apply(final long executionId, final int returnCode) {
-//                if (returnCode == RETURN_CODE_SUCCESS) {
-//                    Log.d(Config.TAG, "Async command execution completed successfully.");
-//                } else if (returnCode == RETURN_CODE_CANCEL) {
-//                    Log.d(Config.TAG, "Async command execution cancelled by user.");
-//                } else {
-//                    Log.d(Config.TAG, String.format("Async command execution failed with returnCode=%d.", returnCode));
-//                }
-//            }
-//        });
-//
-//        Log.d(TAG, "Async Command Started in Service!");
-//
-//        Config.enableStatisticsCallback(new StatisticsCallback() {
-//            public void apply(Statistics newStatistics) {
-////                Log.d(Config.TAG, String.format("frame: %d, time: %d", newStatistics.getVideoFrameNumber(), newStatistics.getTime()));
-//                int timeInMilliseconds = newStatistics.getTime();
-//                if (timeInMilliseconds > 0) {
-//                    int totalVideoDuration = final_duration;
-////                    Log.i(TAG, "Final Video Duration: " + final_duration);
-//
-//                    BigDecimal completePercentage = new BigDecimal(timeInMilliseconds).multiply(new BigDecimal(100)).divide(new BigDecimal(totalVideoDuration), 0, BigDecimal.ROUND_HALF_UP);
-//                    long nowMillis = System.currentTimeMillis();
-//                    long diffMillis = nowMillis - currentMillis;
-//                    Log.d(TAG, "Time Passed: " + diffMillis + "   " + DateUtils.formatElapsedTime(diffMillis / 1000));
-//                    Double etrMillis = ((diffMillis / completePercentage.doubleValue()) * 100 - diffMillis) / 1000;
-//                    String etr = DateUtils.formatElapsedTime(Math.round(etrMillis));
-//                    notificationBuilder.setProgress(100, completePercentage.intValue(), false)
-//                                        .setContentText(completePercentage.toString() + "% ETR: " + etr);
-//                    notificationManager.notify((int) notif_id, notificationBuilder.build());
-//
-//                    if (completePercentage.intValue() >= 100) {
-//                        notificationBuilder.setContentText("Encoding completed")
-//                                // Removes the progress bar
-//                                .setProgress(0,0,false);
-//                        notificationManager.notify((int) notif_id, notificationBuilder.build());
-//                    }
-//                }
-//            }
-//        });
-//
-//        Config.enableLogCallback(new LogCallback() {
-//            public void apply(LogMessage message) {
-//                if (dur_flag == 1) {
-//                    duration = message.getText();
-//                    dur_flag = 0;
-//                }
-//                Log.d(Config.TAG, message.getText());
-//                if (message.getText().contains("Duration:")) {
-//                    Log.d(TAG, "Got Duration!");
-//                    dur_flag = 1;
-//                }
-//            }
-//        });
-//
-//        while (duration == "") {
-////            try {
-////                Log.i(TAG, "Waiting for Duration");
-////                Thread.sleep(1000);
-////            } catch (InterruptedException e) {
-////                Log.d("TAG", "sleep failure");
-////
-////            }
-//            continue;
-//        }
-//        Log.d(TAG, "Duration Found: " + duration);
-//
-//        String[] units = duration.split(":"); //will break the string up into an array
-//        int hours = Integer.parseInt(units[0]);
-//        int minutes = Integer.parseInt(units[1]); //first element
-//        String[] second = units[2].split("\\."); //second element
-//        int seconds = Integer.parseInt(second[0]);
-//        int milli = Integer.parseInt(second[1]);
-//        final_duration = 1000 * (60 * (60 * hours + minutes) + seconds) + milli;
-//
-//        Log.d(TAG, "Duration in Milli: " + final_duration);
-//
-
         return START_STICKY;
     }
 
+    public NotificationCompat.Action getPauseAction(int download_id) {
+        Intent pauseServiceIntent = new Intent(this, HLSService.class);
+        pauseServiceIntent.setAction(ACTION_PAUSE);
+        pauseServiceIntent.putExtra("download_id", download_id);
+        PendingIntent pendingPauseIntent = PendingIntent.getService(this, 0, pauseServiceIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+        return new NotificationCompat.Action(R.drawable.pause_icon, "Pause", pendingPauseIntent);
+    }
+
+    public NotificationCompat.Action getResumeAction(int download_id) {
+        Intent resumeServiceIntent = new Intent(this, HLSService.class);
+        resumeServiceIntent.setAction(ACTION_RESUME);
+        resumeServiceIntent.putExtra("download_id", download_id);
+        PendingIntent pendingResumeIntent = PendingIntent.getService(this, 0, resumeServiceIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+        return new NotificationCompat.Action(R.drawable.resume_icon, "Resume", pendingResumeIntent);
+    }
+
+    public NotificationCompat.Action getCancelAction(int download_id) {
+        Intent cancelServiceIntent = new Intent(this, HLSService.class);
+        cancelServiceIntent.setAction(ACTION_CANCEL);
+        cancelServiceIntent.putExtra("download_id", download_id);
+        PendingIntent pendingCancelIntent = PendingIntent.getService(this, 0, cancelServiceIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+        return new NotificationCompat.Action(R.drawable.pause_icon, "Cancel", pendingCancelIntent);
+    }
 
     public void enqueueDownload(String url, String file) {
         Log.d(TAG, "URL: " + url);
@@ -385,27 +353,54 @@ public class HLSService extends Service {
         fetch.enqueue(request, updatedRequest -> {
             //Request was successfully enqueued for download.
             Log.d(TAG, "Requested Enqueued: " + request.getUrl());
-            notif_id = request.getId();
-            notif_ids.add(notif_id);
+            int download_id = request.getId();
+            Log.d(TAG, "Request ID: " + download_id);
+            notif_ids.add(download_id);
 
-            notificationBuilder.setProgress(100, 0, false);
-            notificationManager.notify(notif_id, notificationBuilder.build());
+            notificationBuilder.setProgress(100, 0, false)
+                                .addAction(getPauseAction(download_id))
+                                .addAction(getCancelAction(download_id));
+            notificationManager.notify(download_id, notificationBuilder.build());
         }, error -> {
             //An error occurred enqueuing the request.
             Log.e(TAG, error.toString());
         });
     }
 
+    @SuppressLint("RestrictedApi")
+    public void pauseDownload(int download_id) {
+        fetch.pause(download_id);
+
+        notificationBuilder.mActions.clear();
+        notificationBuilder.setContentText("Paused!")
+                .addAction(getResumeAction(download_id))
+                .addAction(getCancelAction(download_id));
+        notificationManager.notify(download_id, notificationBuilder.build());
+    }
+
+    @SuppressLint("RestrictedApi")
+    public void resumeDownload(int download_id) {
+        fetch.resume(download_id);
+
+        notificationBuilder.mActions.clear();
+        notificationBuilder.setContentText("Resuming...")
+                .addAction(getPauseAction(download_id))
+                .addAction(getCancelAction(download_id));
+        notificationManager.notify(download_id, notificationBuilder.build());
+    }
+
     @Override
     public void onDestroy() {
         super.onDestroy();
+        fetch.cancelAll();
+        fetch.deleteAll();
         fetch.close();
         for (Integer notif_id: notif_ids) {
             notificationBuilder.setContentText("Downloading Stopped!")
                     .setSmallIcon(R.drawable.cancel_icon)
                     .setOngoing(false)
                     .setProgress(0,0,false);
-            notificationManager.notify((int) notif_id, notificationBuilder.build());
+            notificationManager.notify(notif_id, notificationBuilder.build());
         }
         Log.d(TAG, "Fetched Closed!");
 //        fetch.removeListener(fetchListener);
