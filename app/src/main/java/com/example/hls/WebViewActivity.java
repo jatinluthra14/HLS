@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -38,7 +39,12 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.PopupMenu;
 import androidx.core.app.ActivityCompat;
 
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
+
 import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -64,7 +70,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     Map<String, String> streamStack;
     Map<String, ArrayList<String>> m3u8_ts_map;
     Queue<String> allRequests, mediaRequests;
-    String selected_path, current_url = "", view_mode = "mobile", TAG="WebView", RequestTAG="Request_WebView", okhttpTAG = "Okhttp_WebView";
+    String selected_path, current_url = "", view_mode = "mobile", TAG="WebView", RequestTAG="Request_WebView";
     TextView bubble_text;
     int redirect_flag = 0, stream_flag = 0, min1_flag = 0;
 
@@ -101,14 +107,9 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 .enqueue(new Callback() {
                     @Override
                     public void onFailure(final Call call, IOException e) {
-                        // Error
-
                         runOnUiThread(new Runnable() {
                             @Override
-                            public void run() {
-                                // For the example, you can show an error dialog or a toast
-                                // on the main UI thread
-                            }
+                            public void run() {}
                         });
                     }
 
@@ -118,7 +119,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                         String sreq_url = Util.clearQuery(req_url);
                         Map<String, Object> map = hlsStack.get(orig_url);
                         String spath = (String) map.get("strip_url");
-//                        Log.d(okhttpTAG, "Playlist: \n" + res);
+
                         if (sreq_url.endsWith(".m3u8")) {
                             String res = response.body().string();
                             if (res.contains("#EXT-X-STREAM-INF")) {
@@ -163,7 +164,6 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                                 int ts_flag = 0;
                                 for (String line : lines) {
                                     if (line.contains("#EXTINF")) {
-                                        //                                    Log.d(okhttpTAG, "Segments: " + line);
                                         Double duration = Double.parseDouble(line.replace("#EXTINF:", "").replace(",", "").trim());
                                         total_duration += duration;
                                         ts_flag = 1;
@@ -185,15 +185,9 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                                 hlsStack.put(orig_url, map);
                             }
                         } else if (spath.endsWith(".mp4") || spath.endsWith(".vid")) {
-//                            Log.d(okhttpTAG, response.headers().toString());
                             BufferedInputStream in = new BufferedInputStream(response.body().byteStream(), 2048);
                             byte[] buffer = new byte[4096];
                             in.read(buffer);
-//                            StringBuilder sb = new StringBuilder();
-//                            for (byte b : buffer) {
-//                                sb.append(String.format("%02X ", b));
-//                            }
-//                            Log.d(TAG, "HEX Bytes: " + sb.toString());
                             String mvhd = "6D766864";
                             byte[] mvhd_buf = new byte[mvhd.length() / 2];
                             for (int i = 0; i < mvhd_buf.length; i++) {
@@ -208,7 +202,6 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                                 sb.append(String.format("%02X", b));
                             }
                             int time_scale = Integer.parseInt(sb.toString(), 16);
-//                            Log.d(TAG, "Time Scale: " + time_scale);
                             sb = new StringBuilder();
                             for (int i=mvhd_idx+4; i<mvhd_idx+7; i++) {
                                 byte b = buffer[i];
@@ -217,7 +210,6 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                             int scaled_duration = Integer.parseInt(sb.toString(),16);
                             Double total_duration = ((double)scaled_duration) / ((double)time_scale);
                             String formatted_duration = DateUtils.formatElapsedTime(total_duration.longValue());
-//                            Log.d(TAG, "Total Duration: " + formatted_duration);
                             Log.d(TAG, "Orig URL: " + orig_url);
                             map = hlsStack.get(orig_url);
                             map.put("duration", formatted_duration);
@@ -230,6 +222,12 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 });
     }
 
+    private ByteArrayInputStream getBitmapInputStream(Bitmap bitmap, Bitmap.CompressFormat compressFormat) {
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        bitmap.compress(compressFormat, 80, byteArrayOutputStream);
+        byte[] bitmapData = byteArrayOutputStream.toByteArray();
+        return new ByteArrayInputStream(bitmapData);
+    }
 
     private void clearCookiesAndHistory() {
         CookieManager.getInstance().setAcceptCookie(false);
@@ -258,12 +256,10 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 == PackageManager.PERMISSION_GRANTED) {
             Log.v(TAG,"Permission is granted2");
-//                return true;
         } else {
 
             Log.v(TAG,"Permission is revoked2");
             ActivityCompat.requestPermissions(this, PERMISSIONS_ALL, 2);
-//                return false;
         }
 
         if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -285,7 +281,6 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
 
     @JavascriptInterface
     public void onData(String value) {
-        //.. do something with the data
         Log.d(TAG, "Returned Value: " + value);
     }
 
@@ -306,27 +301,6 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         Intent startServiceIntent = new Intent(WebViewActivity.this, HLSService.class);
         startServiceIntent.setAction("ACTION_START_SERVICE");
         startForegroundService(startServiceIntent);
-
-//        ContentResolver resolver = getContentResolver();
-//        ContentValues contentValues = new ContentValues();
-//        contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, "file.txt");
-//        contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "text/plain");
-//        contentValues.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
-////        contentValues.put(MediaStore.MediaColumns.DATA, "Yo!");
-//
-//        Uri uri = resolver.insert(MediaStore.Files.getContentUri("external"), contentValues);
-//        try {
-//            OutputStream outputStream = resolver.openOutputStream(uri);
-//            outputStream.write("Yo!".getBytes());
-//            outputStream.close();
-//            Log.i(TAG, "File Written!");
-//        } catch (FileNotFoundException e) {
-//            Log.e(TAG, "File Not Found!");
-//            Log.e(TAG, e.toString());
-//        } catch (IOException e) {
-//            Log.e(TAG, "IO Exception!");
-//            Log.e(TAG, e.toString());
-//        }
 
         h1 = new Handler();
         r1 = new Runnable() {
@@ -366,8 +340,6 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         };
         h2.postDelayed(r2, 5000); // one second in ms
 
-//        resolveMedia("https://file-examples-com.github.io/uploads/2017/04/file_example_MP4_480_1_5MG.mp4");
-
         editText = findViewById(R.id.web_address_edit_text);
         back = findViewById(R.id.back_arrow);
         forward = findViewById(R.id.forward_arrow);
@@ -399,22 +371,21 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
         } else {
-            webView.getSettings().setJavaScriptEnabled(true);
-            webView.getSettings().setUseWideViewPort(true);
-            webView.getSettings().setLoadWithOverviewMode(true);
-            webView.getSettings().setSupportZoom(true);
-            webView.getSettings().setSupportMultipleWindows(true);
-            webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
-            webView.setBackgroundColor(Color.WHITE);
-            webView.getSettings().setLoadWithOverviewMode(true);
-            webView.getSettings().setUseWideViewPort(true);
-            webView.getSettings().setSupportZoom(true);
-            webView.getSettings().setBuiltInZoomControls(true);
-            webView.getSettings().setDisplayZoomControls(false);
-            webView.setScrollbarFadingEnabled(false);
+            WebSettings settings = webView.getSettings();
+            settings.setJavaScriptEnabled(true);
+            settings.setLoadWithOverviewMode(true);
+            settings.setUseWideViewPort(true);
+            settings.setSupportZoom(true);
+            settings.setBuiltInZoomControls(false);
+            settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+            settings.setDomStorageEnabled(true);
             String UA = getString(R.string.mobile_UA);
-            webView.getSettings().setUserAgentString(UA);
+            settings.setUserAgentString(UA);
+            webView.setScrollBarStyle(View.SCROLLBARS_OUTSIDE_OVERLAY);
+            webView.setBackgroundColor(Color.WHITE);
+            webView.setScrollbarFadingEnabled(true);
             webView.addJavascriptInterface(this, "android");
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
             clearCookiesAndHistory();
 
@@ -463,16 +434,31 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
 
         webView.setWebViewClient(new MyWebViewClient() {
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                String path = request.getUrl().toString().trim();
-                String spath = Util.clearQuery(path);
-                allRequests.add(path);
-                Log.d(RequestTAG, path);
-                if (spath.endsWith(".m3u8") || spath.endsWith(".mp4") || spath.endsWith(".vid") && !(spath.endsWith(".ts"))) {
-                    if (!(hlsStack.containsKey(path))) {
-                        Log.d(TAG, "New Media Url: " + path);
-                        resolveMedia(path);
+                try {
+                    String path = request.getUrl().toString().trim();
+                    String spath = Util.clearQuery(path);
+                    String lpath = path.toLowerCase();
+                    allRequests.add(path);
+                    Log.d(RequestTAG, path);
+                    if (spath.endsWith(".m3u8") || spath.endsWith(".mp4") || spath.endsWith(".vid") && !(spath.endsWith(".ts"))) {
+                        if (!(hlsStack.containsKey(path))) {
+                            Log.d(TAG, "New Media Url: " + path);
+                            resolveMedia(path);
+                        }
+                    } else if (lpath.contains(".jpg") || lpath.contains(".jpeg")) {
+                        Bitmap bitmap = Glide.with(view).asBitmap().diskCacheStrategy(DiskCacheStrategy.ALL).load(path).submit().get();
+                        return new WebResourceResponse("image/jpg", "UTF-8", getBitmapInputStream(bitmap, Bitmap.CompressFormat.JPEG));
+                    } else if (lpath.contains(".png")) {
+                        Bitmap bitmap = Glide.with(view).asBitmap().diskCacheStrategy(DiskCacheStrategy.ALL).load(path).submit().get();
+                        return new WebResourceResponse("image/png", "UTF-8", getBitmapInputStream(bitmap, Bitmap.CompressFormat.PNG));
+                    } else if (lpath.contains(".webp")) {
+                        Bitmap bitmap = Glide.with(view).asBitmap().diskCacheStrategy(DiskCacheStrategy.ALL).load(path).submit().get();
+                        return new WebResourceResponse("image/webp", "UTF-8", getBitmapInputStream(bitmap, Bitmap.CompressFormat.WEBP));
+                    } else {
+                        return super.shouldInterceptRequest(view, request);
                     }
-
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
                 return super.shouldInterceptRequest(view, request);
             }
@@ -488,18 +474,11 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 current_url = request.getUrl().getHost();
                 editText.setText(request.getUrl().toString());
                 return super.shouldOverrideUrlLoading(view, request);
-
-
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 Log.d(TAG, "Page Finished loading: " + url);
-//                view.loadUrl("javascript:document.addEventListener('click', function(e) {\n" +
-//                        "    e = e || window.event; e.stopPropagation();e.preventDefault();\n" +
-//                        "    var target = e.target || e.srcElement,\n" +
-//                        "        text = target.textContent || target.innerText; console.log(target.outerHTML);\n" +
-//                        "}, false);");
             }
         });
 
@@ -518,7 +497,6 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         OnBackPressedCallback callback = new OnBackPressedCallback(true /* enabled by default */) {
             @Override
             public void handleOnBackPressed() {
-                // Handle the back button event
                 Log.d(TAG, "Back Button Pressed");
                 if (webView.canGoBack()) {
                     webView.goBack();
@@ -570,7 +548,6 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                         }
                         redirect_flag = 1;
                         webView.loadUrl(current_url);
-//                        editText.setText("");
                     }
 
                 }catch (Exception e) {
@@ -609,7 +586,6 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 final PopupMenu sec_menu = new PopupMenu(WebViewActivity.this, v);
                 Map<String, String> res_map = new LinkedHashMap<>();
 
-//                menu.getMenu().add("Three");
                 menu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
                     public boolean onMenuItemClick(MenuItem item) {
                         sec_menu.getMenu().clear();

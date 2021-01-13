@@ -226,11 +226,6 @@ public class HLSService extends Service {
             {
                 Log.e(TAG, "Error: " + error.toString());
                 Integer download_id = download.getId();
-//                notificationBuilder.setContentText("Stopped!")
-//                        .setSmallIcon(R.drawable.cancel_icon)
-//                        .setOngoing(false)
-//                        .setProgress(0,0,false);
-//                notificationManager.notify(download_id, notificationBuilder.build());
 
                 if(!(retries.containsKey(download_id))) {
                     retries.put(download_id, max_retries);
@@ -256,13 +251,10 @@ public class HLSService extends Service {
             }
 
             @Override
-            public void onDownloadBlockUpdated(@NotNull Download download, @NotNull DownloadBlock downloadBlock, int i) {
-
-            }
+            public void onDownloadBlockUpdated(@NotNull Download download, @NotNull DownloadBlock downloadBlock, int i) {}
 
             @Override
-            public void onStarted(@NotNull Download download, @NotNull List<? extends DownloadBlock> list, int i)
-            {
+            public void onStarted(@NotNull Download download, @NotNull List<? extends DownloadBlock> list, int i) {
                 Log.d(TAG, "Started Download: " + download.getId());
             }
 
@@ -345,15 +337,10 @@ public class HLSService extends Service {
                     Double scaled_speed = avg_speed / Math.pow(1000, scale);
                     df.setRoundingMode(RoundingMode.DOWN);
                     String formattedSpeed = df.format(scaled_speed);
-                    if(scale == 0) {
-                        formattedSpeed += " B/s";
-                    } else if (scale == 1) {
-                        formattedSpeed += " KB/s";
-                    } else if (scale == 2) {
-                        formattedSpeed += " MB/s";
-                    } else {
-                        formattedSpeed += " GB/s";
-                    }
+                    if(scale == 0) formattedSpeed += " B/s";
+                    else if (scale == 1) formattedSpeed += " KB/s";
+                    else if (scale == 2) formattedSpeed += " MB/s";
+                    else formattedSpeed += " GB/s";
 
                     notificationBuilder.setProgress(100 * numDownloads, (int) total_progress, false)
                             .setSmallIcon(R.drawable.download_icon)
@@ -363,6 +350,7 @@ public class HLSService extends Service {
                 }
             }
         };
+
         h.postDelayed(groupProgressThread, 1000);
     }
 
@@ -463,7 +451,6 @@ public class HLSService extends Service {
         fetch.getDownloads(new Func<List<Download>>() {
             @Override
             public void call(List<Download> downloads) {
-                //Access all downloads here
                 for(Download download: downloads) {
                     Log.d(TAG, "Download ID: " + download.getId() + " Status: " + download.getStatus() + " Progress: " + download.getProgress() + " Error: " + download.getError() + " URL: " + download.getUrl());
                 }
@@ -505,11 +492,11 @@ public class HLSService extends Service {
         request.setPriority(Priority.HIGH);
         request.setNetworkType(NetworkType.ALL);
         request.setGroupId(group_id);
-//        request.addHeader("clientKey", "SD78DF93_3947&MVNGHE1WONG");
+
         final int download_id = request.getId();
 
         fetch.enqueue(request, updatedRequest -> {
-            //Request was successfully enqueued for download.
+
             Log.d(TAG, "Requested Enqueued: " + request.getUrl());
             Log.d(TAG, "Request ID: " + download_id);
             notif_ids.add(group_id);
@@ -521,7 +508,7 @@ public class HLSService extends Service {
             notificationManager.notify(group_id, notificationBuilder.build());
 
         }, error -> {
-            //An error occurred enqueuing the request.
+
             Log.e(TAG, error.toString());
         });
         return download_id;
@@ -552,19 +539,13 @@ public class HLSService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
+
         fetch.cancelAll();
         fetch.removeAll();
         fetch.close();
-//        for (Integer notif_id: notif_ids) {
-//            notificationBuilder.setContentText("Downloading Stopped!")
-//                    .setSmallIcon(R.drawable.cancel_icon)
-//                    .setOngoing(false)
-//                    .setProgress(0,0,false);
-//            notificationManager.notify(notif_id, notificationBuilder.build());
-//        }
+
         Log.d(TAG, "Fetched Closed!");
         notificationManager.cancelAll();
-//        fetch.removeListener(fetchListener);
     }
 
     @Nullable
