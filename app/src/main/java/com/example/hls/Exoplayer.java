@@ -1,9 +1,14 @@
 package com.example.hls;
 
 import android.annotation.SuppressLint;
-import android.content.pm.ActivityInfo;
-import android.content.res.Configuration;
 import android.os.Bundle;
+import android.util.Log;
+import android.view.View;
+import android.widget.SeekBar;
+import android.widget.Toast;
+
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.AppCompatSeekBar;
 
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ExoPlaybackException;
@@ -12,22 +17,8 @@ import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
-import com.google.android.exoplayer2.ui.PlayerControlView;
 import com.google.android.exoplayer2.ui.PlayerView;
-import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.util.Util;
-
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.AppCompatSeekBar;
-import androidx.appcompat.widget.Toolbar;
-import androidx.coordinatorlayout.widget.CoordinatorLayout;
-
-import android.util.Log;
-import android.view.View;
-import android.widget.FrameLayout;
-import android.widget.RelativeLayout;
-import android.widget.SeekBar;
-import android.widget.Toast;
 
 import java.io.IOException;
 
@@ -55,7 +46,7 @@ public class Exoplayer extends AppCompatActivity {
         }
         playbackStateListener = new PlaybackStateListener();
         playerView = findViewById(R.id.video_view);
-        playback_speed = (AppCompatSeekBar)findViewById(R.id.playback_speed);
+        playback_speed = findViewById(R.id.playback_speed);
         playback_speed.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -81,16 +72,14 @@ public class Exoplayer extends AppCompatActivity {
         super.onStart();
         Log.v("Util", "----------------------------------");
         Log.i("Util", String.valueOf(Util.SDK_INT));
-        if (Util.SDK_INT >= 24) {
-            initializePlayer();
-        }
+        initializePlayer();
     }
 
     @Override
     public void onResume() {
         super.onResume();
         hideSystemUi();
-        if ((Util.SDK_INT < 24 || player == null)) {
+        if (player == null) {
             initializePlayer();
         }
     }
@@ -98,17 +87,12 @@ public class Exoplayer extends AppCompatActivity {
     @Override
     public void onPause() {
         super.onPause();
-        if (Util.SDK_INT < 24) {
-            releasePlayer();
-        }
     }
 
     @Override
     public void onStop() {
         super.onStop();
-        if (Util.SDK_INT >= 24) {
-            releasePlayer();
-        }
+        releasePlayer();
     }
 
     private void initializePlayer() {
@@ -182,7 +166,7 @@ public class Exoplayer extends AppCompatActivity {
         public void onPlayerError(ExoPlaybackException error) {
             if (error.type == ExoPlaybackException.TYPE_SOURCE) {
                 IOException cause = error.getSourceException();
-                Toast.makeText(Exoplayer.this, String.valueOf(cause), Toast.LENGTH_LONG);
+                Toast.makeText(Exoplayer.this, String.valueOf(cause), Toast.LENGTH_LONG).show();
 
             }
         }
