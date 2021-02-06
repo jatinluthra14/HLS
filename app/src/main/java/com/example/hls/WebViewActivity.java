@@ -72,7 +72,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     Queue<String> allRequests, mediaRequests;
     String selected_path, current_url = "", view_mode = "mobile", TAG="WebView", RequestTAG="Request_WebView";
     TextView bubble_text;
-    int redirect_flag = 0, stream_flag = 0, min1_flag = 0;
+    int stream_flag = 0, min1_flag = 0;
 
     Handler h1,h2;
     Runnable r1,r2;
@@ -464,16 +464,18 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
             }
 
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                if (redirect_flag==1 && !(request.getUrl().toString().equals(view.getOriginalUrl()))) current_url = request.getUrl().getHost();
-                redirect_flag = 0;
                 Log.d("WebView_CurrentURL", request.getUrl().getHost());
                 Log.d("WebView_CurrentURL", "Current URL: " + current_url);
-                if (!(current_url.contains(request.getUrl().getHost()) || current_url.equals(getString(R.string.domain_google)))) {
-                    return false;
+                Uri curl = Uri.parse(current_url.trim());
+                if (!(curl.getHost().contains(request.getUrl().getHost()) || current_url.equals(getString(R.string.domain_google)))) {
+                    Log.d(TAG, "Avoiding Redirect: " + request.getUrl());
+                    return true;
                 }
-                current_url = request.getUrl().getHost();
+                Log.d(TAG, "Redirecting to: " + request.getUrl().toString());
+                current_url = request.getUrl().toString();
                 editText.setText(request.getUrl().toString());
-                return super.shouldOverrideUrlLoading(view, request);
+                goButton.performClick();
+                return true;
             }
 
             @Override
@@ -521,6 +523,22 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         }
     }
 
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        String action = intent.getAction();
+        Bundle bundle = intent.getExtras();
+
+        Log.d(TAG, "Action: " + action);
+        if (action.equals("android.intent.action.SEND")) {
+            String url = bundle.getString("android.intent.extra.TEXT");
+            Log.d(TAG, "Intent Uri: " + url);
+            editText.setText(url);
+            goButton.performClick();
+        }
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
@@ -546,7 +564,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                         if (!(current_url.startsWith("http://") || current_url.startsWith("https://"))) {
                             current_url = "https://" + current_url;
                         }
-                        redirect_flag = 1;
+                        editText.setText(current_url);
                         webView.loadUrl(current_url);
                     }
 
