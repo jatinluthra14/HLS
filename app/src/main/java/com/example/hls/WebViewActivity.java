@@ -64,7 +64,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     WebView webView;
     EditText editText;
     ProgressBar progressBar;
-    ImageButton back, forward, stop, refresh, homeButton, menuButton, streamButton, viewModeButton, downloadButton;
+    ImageButton back, forward, stop, refresh, homeButton, menuButton, streamButton, downloadButton, optionsButton;
     Button goButton;
     Map<String, Map<String, Object>> hlsStack;
     Map<String, String> streamStack;
@@ -216,7 +216,6 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                             map.put("type", "mp4");
                             hlsStack.put(orig_url, map);
                         }
-                        // Do something with the response
                         stream_flag = 0;
                     }
                 });
@@ -349,8 +348,8 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         homeButton = findViewById(R.id.home);
         menuButton = findViewById(R.id.menu);
         streamButton = findViewById(R.id.stream);
-        viewModeButton = findViewById(R.id.view_mode);
         downloadButton = findViewById(R.id.download);
+        optionsButton = findViewById(R.id.options);
         progressBar = findViewById(R.id.progress_bar);
         progressBar.setMax(100);
         progressBar.setVisibility(View.VISIBLE);
@@ -364,7 +363,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         homeButton.setOnClickListener(this);
         menuButton.setOnClickListener(this);
         streamButton.setOnClickListener(this);
-        viewModeButton.setOnClickListener(this);
+        optionsButton.setOnClickListener(this);
         downloadButton.setOnClickListener(this);
 
 
@@ -592,7 +591,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 break;
 
             case R.id.home:
-                current_url = getString(R.string.domain_google);
+                current_url = "https://" + getString(R.string.domain_google);
 //                current_url = "https://content.jwplatform.com/manifests/yp34SRmf.m3u8";
 //                current_url = "https://file-examples-com.github.io/uploads/2017/04/file_example_MP4_1920_18MG.mp4";
 //                current_url = "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_30mb.mp4";
@@ -674,10 +673,6 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 startActivity(intent);
                 break;
 
-            case R.id.view_mode:
-                switchMode();
-                break;
-
             case R.id.download:
                 if(selected_path!=null) {
                     File dir_downloads = Environment.getExternalStorageDirectory();
@@ -699,7 +694,31 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                     startForegroundService(intent);
                 }
                 break;
+            case R.id.options:
+                final PopupMenu settingsMenu = new PopupMenu(WebViewActivity.this, v);
+                settingsMenu.getMenu().clear();
+                settingsMenu.getMenu().add("Desktop Mode");
+                settingsMenu.getMenu().add("Logs");
+                settingsMenu.show();
 
+                settingsMenu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
+                    @Override
+                    public boolean onMenuItemClick(MenuItem item) {
+                        switch (item.getTitle().toString()) {
+                            case "Desktop Mode":
+                                switchMode();
+                                break;
+                            case "Logs":
+                                Intent intent1 = new Intent(WebViewActivity.this, AppLogs.class);
+                                startActivity(intent1);
+                                break;
+                            default:
+                                return false;
+                        }
+                        return true;
+                    }
+                });
+                break;
             default:
                 break;
         }

@@ -12,47 +12,46 @@
 
     <application
         android:allowBackup="true"
-        android:usesCleartextTraffic="true"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:launchMode="singleTop"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MaterialComponents.Light.NoActionBar"
-        android:launchMode="singleTop">
+        android:usesCleartextTraffic="true">
+        <activity
+            android:name=".AppLogs"
+            android:label="@string/title_activity_app_logs"
+            android:theme="@style/NoActionBar" />
         <activity
             android:name=".WebViewActivity"
             android:configChanges="orientation|screenSize">
-
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
-
-
             </intent-filter>
 
-            <!-- Used to handle Chrome then menu then share.-->
+            <!-- Used to handle Chrome then menu then share. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
+
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+
                 <data android:mimeType="text/plain" />
                 <data android:mimeType="image/*" />
             </intent-filter>
-
         </activity>
         <activity
             android:name=".Exoplayer"
             android:configChanges="orientation|screenSize"
             android:label="@string/title_activity_exoplayer"
             android:theme="@style/AppTheme.NoActionBar"
-            android:turnScreenOn="true">
+            android:turnScreenOn="true" />
 
-        </activity>
-
-        <!-- Mention the service name here -->
-        <service android:name=".HLSService"/>
+        <service android:name=".HLSService" />
     </application>
 
 </manifest>

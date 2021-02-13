@@ -16,4 +16,5 @@
     <string name="desktop">desktop</string>
     <string name="mobile">mobile</string>
     <string name="domain_google">www.google.com</string>
+    <string name="title_activity_app_logs">AppLogs</string>
 </resources>
