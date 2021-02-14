@@ -33,7 +33,7 @@ public class AppLogs extends AppCompatActivity {
                     @Override
                     public void run() {
                         try {
-                            Process process = Runtime.getRuntime().exec("logcat -d HLSService:V WebView:V Request_WebView:V AppLogs:V *:S");
+                            Process process = Runtime.getRuntime().exec("logcat -d HLS_AppLogs:V HLS_Service:V HLS_WebView:V HLS_Request:V *:S");
                             BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
 
                             StringBuilder appLogs = new StringBuilder();

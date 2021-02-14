@@ -315,19 +315,19 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
 
         h1 = new Handler();
         r1 = new Runnable() {
-            int count = 0;
+            int count = 1;
             @Override
             public void run() {
                 count++;
-                bubble_text.setText(String.valueOf(hlsStack.size()));
-                h1.postDelayed(this, 1000); //ms
-                if(webView.getUrl() != null) {
+                bubble_text.setText(String.valueOf(hlsStack.size()) + 1);
+                if(webView.getUrl() != null && !(current_url.equals(webView.getUrl()))) {
                     current_url = webView.getUrl();
-                    editText.setText(current_url);
+                    if(!(editText.getText().equals(current_url))) editText.setText(current_url);
                 }
+                h1.postDelayed(this, 200); //ms
             }
         };
-        h1.postDelayed(r1, 5000); // one second in ms
+        h1.postDelayed(r1, 5000);
 
         h2 = new Handler();
         r2 = new Runnable() {
@@ -619,6 +619,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 final PopupMenu sec_menu = new PopupMenu(WebViewActivity.this, v);
                 final PopupMenu tri_menu = new PopupMenu(WebViewActivity.this, v);
                 Map<String, String> res_map = new LinkedHashMap<>();
+                String[] file_name = new String[1];
 
                 menu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
                     public boolean onMenuItemClick(MenuItem item) {
@@ -634,12 +635,15 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                                 public void run() {
                                     try {
                                         VideoInfo streamInfo = YoutubeDL.getInstance().getInfo(current_url);
+                                        file_name[0] = streamInfo.getTitle().replace(" ", "_");
                                         ArrayList<VideoFormat> vf = streamInfo.getFormats();
+                                        res_map.put("Audio Only", "bestaudio");
                                         for(VideoFormat format: vf) {
                                             if(format.getWidth() != 0 && format.getExt().equals("mp4")) {
                                                 String res = format.getWidth() + "x" + format.getHeight();
                                                 res_map.put(res, format.getFormatId());
                                             }
+
                                         }
                                     } catch (Exception e) {
                                         e.printStackTrace();
@@ -704,7 +708,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
 
                         Intent intent = new Intent(WebViewActivity.this, HLSService.class);
                         intent.putExtra("url", current_url);
-                        intent.putExtra("file", "name.mp4");
+                        intent.putExtra("file", file_name[0]);
                         intent.putExtra("type", "yt");
                         intent.putExtra("format_id", format_id);
                         intent.setAction("ACTION_ENQUEUE");

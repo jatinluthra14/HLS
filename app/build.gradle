@@ -62,4 +62,5 @@ dependencies {
     annotationProcessor 'com.github.bumptech.glide:compiler:4.11.0'
 
     implementation 'com.github.yausername.youtubedl-android:library:0.12.3'
+    implementation 'com.github.yausername.youtubedl-android:ffmpeg:0.12.+'
 }

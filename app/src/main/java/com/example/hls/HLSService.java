@@ -39,6 +39,7 @@ import com.tonyodev.fetch2core.Func;
 import com.yausername.youtubedl_android.YoutubeDL;
 import com.yausername.youtubedl_android.YoutubeDLException;
 import com.yausername.youtubedl_android.YoutubeDLRequest;
+import com.yausername.youtubedl_android.YoutubeDLResponse;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -105,7 +106,8 @@ public class HLSService extends Service {
                 try {
                     YoutubeDL.getInstance().init(getApplication());
                     YoutubeDL.getInstance().updateYoutubeDL(getApplication());
-                    Log.d(TAG, YoutubeDL.getInstance().version(getApplicationContext()));
+                    com.yausername.ffmpeg.FFmpeg.getInstance().init(getApplication());
+                    Log.d(TAG, "YoutubeDL Version: " + YoutubeDL.getInstance().version(getApplicationContext()));
                 } catch (YoutubeDLException e) {
                     e.printStackTrace();
                 }
@@ -433,18 +435,38 @@ public class HLSService extends Service {
                                     try {
                                         YoutubeDLRequest request = new YoutubeDLRequest(url);
                                         String format_id = bundle.getString("format_id");
-                                        request.addOption("-f", format_id + "+bestaudio");
-                                        request.addOption("-o", downloads + "/%(title)s-" + format_id + ".%(ext)s");
+                                        if (format_id.equals("bestaudio")) {
+                                            request.addOption("-f", format_id);
+                                            request.addOption("-x");
+                                            request.addOption("--audio-format", "mp3");
+                                            request.addOption("--embed-thumbnail");
+                                            request.addOption("--add-metadata");
+                                        }
+                                        else request.addOption("-f", format_id + "+bestaudio");
+                                        request.addOption("-o", downloads + "/" + file + "-" + format_id + ".%(ext)s");
                                         notificationBuilder.mActions.clear();
-                                        notificationBuilder.setProgress(0, 0, true);
+                                        notificationBuilder.setProgress(0, 0, true)
+                                                            .setSmallIcon(R.drawable.download_icon)
+                                                            .setOngoing(true);
                                         notificationManager.notify(group_id, notificationBuilder.build());
-                                        YoutubeDL.getInstance().execute(request, (progress, etaInSeconds) -> {
+                                        YoutubeDLResponse youtubeDLResponse = YoutubeDL.getInstance().execute(request, (progress, etaInSeconds) -> {
                                             notificationBuilder.setProgress(100 , (int) progress, false)
                                                     .setSmallIcon(R.drawable.download_icon)
                                                     .setOngoing(true)
                                                     .setContentText("ETA: " + DateUtils.formatElapsedTime(etaInSeconds) );
                                             notificationManager.notify(group_id, notificationBuilder.build());
+                                            if((int)progress == 100) {
+                                                notificationBuilder.setProgress(0, 0, true)
+                                                        .setContentText("Encoding!")
+                                                        .setSmallIcon(R.drawable.refresh_icon)
+                                                        .setOngoing(true);
+                                                notificationManager.notify(group_id, notificationBuilder.build());
+                                            }
                                         });
+                                        String out = youtubeDLResponse.getOut();
+                                        String err = youtubeDLResponse.getErr();
+                                        if (out != null && out.length() > 0) Log.d(TAG, "YoutubeDL Output: " + out);
+                                        if (err != null && err.length() > 0) Log.e(TAG, "YoutubeDL Error: " + err);
                                         Thread.sleep(1000);
                                         notificationBuilder.setContentText("Download Completed!")
                                                 .setOngoing(false)
