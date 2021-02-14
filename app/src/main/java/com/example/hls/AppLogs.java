@@ -17,7 +17,7 @@ public class AppLogs extends AppCompatActivity {
     TextView logsTextView;
     ScrollView scrollView;
 
-    String TAG = "AppLogs";
+    String TAG = "HLS_AppLogs";
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);

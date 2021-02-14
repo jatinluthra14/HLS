@@ -41,6 +41,9 @@ import androidx.core.app.ActivityCompat;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.yausername.youtubedl_android.YoutubeDL;
+import com.yausername.youtubedl_android.mapper.VideoFormat;
+import com.yausername.youtubedl_android.mapper.VideoInfo;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
@@ -52,6 +55,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Executor;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -70,12 +74,13 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     Map<String, String> streamStack;
     Map<String, ArrayList<String>> m3u8_ts_map;
     Queue<String> allRequests, mediaRequests;
-    String selected_path, current_url = "", view_mode = "mobile", TAG="WebView", RequestTAG="Request_WebView";
+    String selected_path, current_url = "", view_mode = "mobile", TAG="HLS_WebView", RequestTAG="HLS_Request";
     TextView bubble_text;
     int stream_flag = 0, min1_flag = 0;
 
     Handler h1,h2;
     Runnable r1,r2;
+    Executor executor;
 
     public static String[] PERMISSIONS_ALL = {
             Manifest.permission.READ_EXTERNAL_STORAGE,
@@ -288,6 +293,13 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_web_view);
 
+        executor = new Executor() {
+            @Override
+            public void execute(Runnable command) {
+                new Thread(command).start();
+            }
+        };
+
         bubble_text = findViewById(R.id.bubble_text);
         hlsStack = new LinkedHashMap<>();
         streamStack = new LinkedHashMap<>();
@@ -309,6 +321,10 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 count++;
                 bubble_text.setText(String.valueOf(hlsStack.size()));
                 h1.postDelayed(this, 1000); //ms
+                if(webView.getUrl() != null) {
+                    current_url = webView.getUrl();
+                    editText.setText(current_url);
+                }
             }
         };
         h1.postDelayed(r1, 5000); // one second in ms
@@ -463,16 +479,16 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
             }
 
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Log.d("WebView_CurrentURL", request.getUrl().getHost());
-                Log.d("WebView_CurrentURL", "Current URL: " + current_url);
+                Log.d("HLS_CurrentURL", request.getUrl().getHost());
+                Log.d("HLS_CurrentURL", "Current URL: " + current_url);
                 Uri curl = Uri.parse(current_url.trim());
-                if (!(curl.getHost().contains(request.getUrl().getHost()) || current_url.equals(getString(R.string.domain_google)))) {
+                if (!(request.getUrl().getHost().contains(curl.getHost().replace("www.", "").replace(".com", "")) || curl.getHost().equals(getString(R.string.domain_google)))) {
                     Log.d(TAG, "Avoiding Redirect: " + request.getUrl());
                     return true;
                 }
                 Log.d(TAG, "Redirecting to: " + request.getUrl().toString());
                 current_url = request.getUrl().toString();
-                editText.setText(request.getUrl().toString());
+                editText.setText(current_url);
                 goButton.performClick();
                 return true;
             }
@@ -601,16 +617,46 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
             case R.id.menu:
                 final PopupMenu menu = new PopupMenu(WebViewActivity.this, v);
                 final PopupMenu sec_menu = new PopupMenu(WebViewActivity.this, v);
+                final PopupMenu tri_menu = new PopupMenu(WebViewActivity.this, v);
                 Map<String, String> res_map = new LinkedHashMap<>();
 
                 menu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
                     public boolean onMenuItemClick(MenuItem item) {
                         sec_menu.getMenu().clear();
                         String item_title = (String) item.getTitle();
+
                         if (item_title.contains("<1 Min Videos")) {
                             min1_flag = min1_flag ^ 1;
                             return true;
+                        } else if (item_title.equals("Parse Current URL")) {
+                            executor.execute(new Runnable() {
+                                @Override
+                                public void run() {
+                                    try {
+                                        VideoInfo streamInfo = YoutubeDL.getInstance().getInfo(current_url);
+                                        ArrayList<VideoFormat> vf = streamInfo.getFormats();
+                                        for(VideoFormat format: vf) {
+                                            if(format.getWidth() != 0 && format.getExt().equals("mp4")) {
+                                                String res = format.getWidth() + "x" + format.getHeight();
+                                                res_map.put(res, format.getFormatId());
+                                            }
+                                        }
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                    runOnUiThread(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            for(String res : res_map.keySet()) {
+                                                tri_menu.getMenu().add(res);
+                                            }
+                                            tri_menu.show();
+                                        }
+                                    });
+                                }
+                            });
                         }
+                        Toast.makeText(WebViewActivity.this, "Parsing URL!", Toast.LENGTH_LONG).show();
                         selected_path = item_title.substring(item_title.indexOf("] ")+1).trim();
 
                         Map<String, Object> map = hlsStack.get(selected_path);
@@ -650,6 +696,25 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                     }
                 });
 
+                tri_menu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
+                    @Override
+                    public boolean onMenuItemClick(MenuItem item) {
+                        String item_title = (String) item.getTitle();
+                        String format_id = res_map.get(item_title.trim());
+
+                        Intent intent = new Intent(WebViewActivity.this, HLSService.class);
+                        intent.putExtra("url", current_url);
+                        intent.putExtra("file", "name.mp4");
+                        intent.putExtra("type", "yt");
+                        intent.putExtra("format_id", format_id);
+                        intent.setAction("ACTION_ENQUEUE");
+                        startForegroundService(intent);
+                        Toast.makeText(WebViewActivity.this, "Download Started!", Toast.LENGTH_LONG).show();
+                        return true;
+                    }
+                });
+
+                menu.getMenu().add("Parse Current URL");
                 for (Map.Entry<String, Map<String, Object>> mapElement : hlsStack.entrySet()) {
                     String key = mapElement.getKey();
                     Map<String, Object> value = mapElement.getValue();
@@ -692,6 +757,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                     }
                     intent.setAction("ACTION_ENQUEUE");
                     startForegroundService(intent);
+                    Toast.makeText(WebViewActivity.this, "Download Started!", Toast.LENGTH_LONG).show();
                 }
                 break;
             case R.id.options:

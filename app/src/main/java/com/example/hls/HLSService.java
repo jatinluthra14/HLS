@@ -13,6 +13,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.StrictMode;
 import android.text.format.DateUtils;
 import android.util.Log;
 
@@ -35,6 +36,9 @@ import com.tonyodev.fetch2.Status;
 import com.tonyodev.fetch2core.DownloadBlock;
 import com.tonyodev.fetch2core.Downloader;
 import com.tonyodev.fetch2core.Func;
+import com.yausername.youtubedl_android.YoutubeDL;
+import com.yausername.youtubedl_android.YoutubeDLException;
+import com.yausername.youtubedl_android.YoutubeDLRequest;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -49,6 +53,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Executor;
 
 import static androidx.core.app.NotificationCompat.PRIORITY_MIN;
 import static com.arthenica.mobileffmpeg.Config.RETURN_CODE_CANCEL;
@@ -63,7 +68,7 @@ public class HLSService extends Service {
     public static final String ACTION_PAUSE = "ACTION_PAUSE";
     public static final String ACTION_CANCEL = "ACTION_CANCEL";
 
-    String TAG = "HLSService", channel_id = "Download";
+    String TAG = "HLS_Service", channel_id = "Download";
     NotificationManager notificationManager;
     NotificationCompat.Builder notificationBuilder;
     int dur_flag = 0, final_duration = 0;
@@ -79,12 +84,36 @@ public class HLSService extends Service {
     Map<Integer, Map<Integer, Map<String, Long>>> groups;
     Map<Integer ,Map<String, Object>> group_files;
     Handler h;
+    Executor executor;
     Runnable groupProgressThread;
 
     @Override
     public void onCreate() {
+        StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
+        StrictMode.setThreadPolicy(policy);
         h = new Handler();
+        executor = new Executor() {
+            @Override
+            public void execute(Runnable command) {
+                new Thread(command).start();
+            }
+        };
 
+        Runnable r = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    YoutubeDL.getInstance().init(getApplication());
+                    YoutubeDL.getInstance().updateYoutubeDL(getApplication());
+                    Log.d(TAG, YoutubeDL.getInstance().version(getApplicationContext()));
+                } catch (YoutubeDLException e) {
+                    e.printStackTrace();
+                }
+            }
+        };
+
+//        h.post(r);
+        executor.execute(r);
         notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         NotificationChannel notificationChannel = new NotificationChannel(channel_id, "HLS Service", NotificationManager.IMPORTANCE_DEFAULT);
 
@@ -372,13 +401,13 @@ public class HLSService extends Service {
                         url = bundle.getString("url");
                         file = bundle.getString("file");
                         type = bundle.getString("type");
-                        int group_id = file.hashCode();
+                        int group_id = url.hashCode();
                         if (type.equals("m3u8")) {
                             ArrayList<String> ts_files = bundle.getStringArrayList("ts_files");
                             ts_names = new String[ts_files.size()];
                             int i = 0;
                             Map<Integer, Map<String, Long>> group_map = new LinkedHashMap<>();
-                            for (String ts: ts_files.toArray(new String[ts_files.size()])) {
+                            for (String ts : ts_files.toArray(new String[ts_files.size()])) {
                                 i += 1;
                                 String fname = downloads + i + ".ts";
                                 download_id = enqueueDownload(ts, fname, group_id);
@@ -387,7 +416,7 @@ public class HLSService extends Service {
                                 download_map.put("eta", (long) -1);
                                 download_map.put("speed", (long) -1);
                                 group_map.put(download_id, download_map);
-                                ts_names[i-1] = fname;
+                                ts_names[i - 1] = fname;
                             }
                             groups.put(group_id, group_map);
 
@@ -396,6 +425,38 @@ public class HLSService extends Service {
                             file_info.put("fname", file.trim());
                             file_info.put("type", type);
                             group_files.put(group_id, file_info);
+                        } else if (type.equals("yt")) {
+                            executor.execute(new Runnable() {
+                                @SuppressLint("RestrictedApi")
+                                @Override
+                                public void run() {
+                                    try {
+                                        YoutubeDLRequest request = new YoutubeDLRequest(url);
+                                        String format_id = bundle.getString("format_id");
+                                        request.addOption("-f", format_id + "+bestaudio");
+                                        request.addOption("-o", downloads + "/%(title)s-" + format_id + ".%(ext)s");
+                                        notificationBuilder.mActions.clear();
+                                        notificationBuilder.setProgress(0, 0, true);
+                                        notificationManager.notify(group_id, notificationBuilder.build());
+                                        YoutubeDL.getInstance().execute(request, (progress, etaInSeconds) -> {
+                                            notificationBuilder.setProgress(100 , (int) progress, false)
+                                                    .setSmallIcon(R.drawable.download_icon)
+                                                    .setOngoing(true)
+                                                    .setContentText("ETA: " + DateUtils.formatElapsedTime(etaInSeconds) );
+                                            notificationManager.notify(group_id, notificationBuilder.build());
+                                        });
+                                        Thread.sleep(1000);
+                                        notificationBuilder.setContentText("Download Completed!")
+                                                .setOngoing(false)
+                                                .setSmallIcon(R.drawable.done_icon)
+                                                .setProgress(0,0,false);
+                                        notificationManager.notify(group_id, notificationBuilder.build());
+                                    } catch (Exception e) {
+                                        Log.e(TAG, "failed to initialize youtubedl-android", e);
+                                        e.printStackTrace();
+                                    }
+                                }
+                            });
                         } else {
                             Map<Integer, Map<String, Long>> group_map = new LinkedHashMap<>();
                             Map<String, Object> file_info = new LinkedHashMap<>();
@@ -540,8 +601,7 @@ public class HLSService extends Service {
     public void onDestroy() {
         super.onDestroy();
 
-        fetch.cancelAll();
-        fetch.removeAll();
+        fetch.removeAllWithStatus(Status.COMPLETED);
         fetch.close();
 
         Log.d(TAG, "Fetched Closed!");
