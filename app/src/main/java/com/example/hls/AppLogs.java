@@ -2,7 +2,14 @@ package com.example.hls;
 
 import android.os.Bundle;
 import android.os.Handler;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.animation.Animation;
+import android.view.animation.TranslateAnimation;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
+import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -16,6 +23,9 @@ public class AppLogs extends AppCompatActivity {
 
     TextView logsTextView;
     ScrollView scrollView;
+    LinearLayout optionsView;
+    CheckBox autoScroll;
+    boolean visibilityFlag = false, autoScrollFlag = true;
 
     String TAG = "HLS_AppLogs";
     @Override
@@ -25,6 +35,65 @@ public class AppLogs extends AppCompatActivity {
 
         logsTextView = findViewById(R.id.app_logs_text);
         scrollView = findViewById(R.id.app_logs_scroller);
+        optionsView = findViewById(R.id.app_logs_options);
+        autoScroll = findViewById(R.id.app_logs_auto_scroll);
+        optionsView.setVisibility(View.GONE);
+
+        final GestureDetector gDetector = new GestureDetector(getBaseContext(), new GestureDetector.SimpleOnGestureListener() {
+
+            @Override
+            public boolean onDown(MotionEvent e) {
+                return true;
+            }
+
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                if (!visibilityFlag) {
+                    optionsView.setVisibility(View.VISIBLE);
+                    TranslateAnimation animate = new TranslateAnimation(0, 0, -optionsView.getHeight(), 0);
+                    animate.setDuration(500);
+                    animate.setFillAfter(true);
+                    optionsView.startAnimation(animate);
+                    visibilityFlag = true;
+
+                } else {
+                    TranslateAnimation animate = new TranslateAnimation(0, 0, 0, -optionsView.getHeight());
+                    animate.setDuration(500);
+                    animate.setFillAfter(true);
+                    animate.setAnimationListener(new Animation.AnimationListener() {
+                        @Override
+                        public void onAnimationStart(Animation animation) {
+
+                        }
+
+                        @Override
+                        public void onAnimationEnd(Animation animation) {
+                            optionsView.clearAnimation();
+                            optionsView.setVisibility(View.GONE);
+
+                        }
+
+                        @Override
+                        public void onAnimationRepeat(Animation animation) {
+
+                        }
+                    });
+                    optionsView.startAnimation(animate);
+                    visibilityFlag = false;
+                }
+
+                return true;
+            }
+        });
+        scrollView.setOnTouchListener((v, event) -> gDetector.onTouchEvent(event));
+
+        autoScroll.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                autoScrollFlag = isChecked;
+            }
+        });
+
         Handler h = new Handler();
         Runnable r = new Runnable() {
             @Override
@@ -42,12 +111,14 @@ public class AppLogs extends AppCompatActivity {
                                 appLogs.append(line + "\n\n");
                             }
                             logsTextView.setText(appLogs.toString());
-                            scrollView.post(new Runnable() {
-                                @Override
-                                public void run() {
-                                    scrollView.fullScroll(View.FOCUS_DOWN);
-                                }
-                            });
+                            if (autoScrollFlag) {
+                                scrollView.post(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        scrollView.fullScroll(View.FOCUS_DOWN);
+                                    }
+                                });
+                            }
                         } catch (IOException e) {
                             e.printStackTrace();
                         }

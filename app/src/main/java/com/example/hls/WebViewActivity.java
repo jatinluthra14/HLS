@@ -319,7 +319,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
             @Override
             public void run() {
                 count++;
-                bubble_text.setText(String.valueOf(hlsStack.size()) + 1);
+                bubble_text.setText(String.valueOf(hlsStack.size() + 1));
                 if(webView.getUrl() != null && !(current_url.equals(webView.getUrl()))) {
                     current_url = webView.getUrl();
                     if(!(editText.getText().equals(current_url))) editText.setText(current_url);
@@ -529,12 +529,14 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         String action = intent.getAction();
         Bundle bundle = intent.getExtras();
 
-        Log.d(TAG, "Action: " + action);
-        if (action.equals("android.intent.action.SEND")) {
-            String url = bundle.getString("android.intent.extra.TEXT");
-            Log.d(TAG, "Intent Uri: " + url);
-            editText.setText(url);
-            goButton.performClick();
+        if(action != null) {
+            Log.d(TAG, "Action: " + action);
+            if (action.equals("android.intent.action.SEND")) {
+                String url = bundle.getString("android.intent.extra.TEXT");
+                Log.d(TAG, "Intent Uri: " + url);
+                editText.setText(url);
+                goButton.performClick();
+            }
         }
     }
 

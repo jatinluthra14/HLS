@@ -523,6 +523,7 @@ public class HLSService extends Service {
                     break;
                 case ACTION_STOP_SERVICE:
                     Log.d(TAG, "Stopping Service");
+                    Exiter.exitApplication(HLSService.this);
                     stopForeground(true);
                     stopSelf();
                     break;

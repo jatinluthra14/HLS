@@ -4,6 +4,24 @@
     android:layout_width="fill_parent"
     android:layout_height="fill_parent">
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_gravity="center"
+        android:weightSum="1"
+        android:id="@+id/app_logs_options">
+
+        <CheckBox
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Auto Scroll"
+            android:layout_weight="1"
+            android:checked="true"
+            android:id="@+id/app_logs_auto_scroll"/>
+
+    </LinearLayout>
+
     <ScrollView
         android:id="@+id/app_logs_scroller"
         android:layout_width="fill_parent"

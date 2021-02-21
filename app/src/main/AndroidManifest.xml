@@ -12,6 +12,7 @@
 
     <application
         android:allowBackup="true"
+        android:extractNativeLibs="true"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -19,8 +20,11 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MaterialComponents.Light.NoActionBar"
-        android:usesCleartextTraffic="true"
-        android:extractNativeLibs="true">
+        android:usesCleartextTraffic="true">
+
+        <activity
+            android:name=".Exiter"
+            android:autoRemoveFromRecents="true" />
         <activity
             android:name=".AppLogs"
             android:label="@string/title_activity_app_logs"
