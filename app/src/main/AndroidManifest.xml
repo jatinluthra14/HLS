@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.hls">
+    package="com.jtb.hls">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -23,14 +23,14 @@
         android:usesCleartextTraffic="true">
 
         <activity
-            android:name=".Exiter"
+            android:name="com.jtb.hls.Exiter"
             android:autoRemoveFromRecents="true" />
         <activity
-            android:name=".AppLogs"
+            android:name="com.jtb.hls.AppLogs"
             android:label="@string/title_activity_app_logs"
             android:theme="@style/Theme.HLS" />
         <activity
-            android:name=".WebViewActivity"
+            android:name="com.jtb.hls.WebViewActivity"
             android:configChanges="orientation|screenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -50,13 +50,13 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".Exoplayer"
+            android:name="com.jtb.hls.Exoplayer"
             android:configChanges="orientation|screenSize"
             android:label="@string/title_activity_exoplayer"
             android:theme="@style/Theme.HLS"
             android:turnScreenOn="true" />
 
-        <service android:name=".HLSService" />
+        <service android:name="com.jtb.hls.HLSService" />
     </application>
 
 </manifest>

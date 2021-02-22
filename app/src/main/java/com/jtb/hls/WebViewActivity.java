@@ -1,4 +1,4 @@
-package com.example.hls;
+package com.jtb.hls;
 
 import android.Manifest;
 import android.content.Context;

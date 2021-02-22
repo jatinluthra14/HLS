@@ -1,4 +1,4 @@
-package com.example.hls;
+package com.jtb.hls;
 
 import android.os.Bundle;
 import android.os.Handler;
