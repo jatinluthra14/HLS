@@ -19,7 +19,7 @@
         android:launchMode="singleTop"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.MaterialComponents.Light.NoActionBar"
+        android:theme="@style/Theme.HLS"
         android:usesCleartextTraffic="true">
 
         <activity
@@ -28,7 +28,7 @@
         <activity
             android:name=".AppLogs"
             android:label="@string/title_activity_app_logs"
-            android:theme="@style/NoActionBar" />
+            android:theme="@style/Theme.HLS" />
         <activity
             android:name=".WebViewActivity"
             android:configChanges="orientation|screenSize">
@@ -53,7 +53,7 @@
             android:name=".Exoplayer"
             android:configChanges="orientation|screenSize"
             android:label="@string/title_activity_exoplayer"
-            android:theme="@style/AppTheme.NoActionBar"
+            android:theme="@style/Theme.HLS"
             android:turnScreenOn="true" />
 
         <service android:name=".HLSService" />

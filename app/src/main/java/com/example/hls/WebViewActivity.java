@@ -27,7 +27,6 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
@@ -68,8 +67,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     WebView webView;
     EditText editText;
     ProgressBar progressBar;
-    ImageButton back, forward, stop, refresh, homeButton, menuButton, streamButton, downloadButton, optionsButton;
-    Button goButton;
+    ImageButton back, forward, stop, refresh, homeButton, menuButton, streamButton, downloadButton, optionsButton, goButton;
     Map<String, Map<String, Object>> hlsStack;
     Map<String, String> streamStack;
     Map<String, ArrayList<String>> m3u8_ts_map;
