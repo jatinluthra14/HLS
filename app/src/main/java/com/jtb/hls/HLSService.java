@@ -84,6 +84,7 @@ public class HLSService extends Service {
     String[] ts_names;
     Map<Integer, Map<Integer, Map<String, Long>>> groups;
     Map<Integer ,Map<String, Object>> group_files;
+    Map<Integer, Long> groupstartTimes;
     Handler h;
     Executor executor;
     Runnable groupProgressThread;
@@ -165,11 +166,13 @@ public class HLSService extends Service {
                 .build();
 
         fetch = Fetch.Impl.getInstance(fetchConfiguration);
+        fetch.removeAll();
 
         notif_ids = new HashSet<>();
         retries = new HashMap<>();
         groups = new HashMap<>();
         group_files = new HashMap<>();
+        groupstartTimes = new HashMap<>();
 
         fetchListener = new FetchListener() {
             @Override
@@ -305,7 +308,6 @@ public class HLSService extends Service {
                 groups.put(group_id, group_map);
 
                 h.post(groupProgressThread);
-
             }
 
             @Override
@@ -352,18 +354,18 @@ public class HLSService extends Service {
             public void run() {
                 for (int group_id: groups.keySet()) {
                     Map<Integer, Map<String, Long>> group_map = groups.get(group_id);
-                    long total_progress = 0, eta = 0, speed = 0, avg_eta, avg_speed;
+                    long total_progress = 0, speed = 0, eta, avg_eta, avg_speed;
                     for (int download_id: group_map.keySet()) {
                         Map<String, Long> download_map = group_map.get(download_id);
                         total_progress += download_map.get("progress");
-                        eta += download_map.get("eta");
                         speed += download_map.get("speed");
                     }
                     int numDownloads = group_map.keySet().size();
-                    avg_eta = eta / numDownloads;
+                    eta = System.currentTimeMillis() - groupstartTimes.get(group_id);
+                    avg_eta = ( eta / total_progress ) * 100 * numDownloads - eta;
                     avg_speed = speed / numDownloads;
 
-                    long eta_sec = avg_eta / 1000;
+                    long eta_sec = Math.max(avg_eta / 1000, 0);
                     long scale = (long)(Math.log10(avg_speed) / 3);
                     Double scaled_speed = avg_speed / Math.pow(1000, scale);
                     df.setRoundingMode(RoundingMode.DOWN);
@@ -421,6 +423,7 @@ public class HLSService extends Service {
                                 ts_names[i - 1] = fname;
                             }
                             groups.put(group_id, group_map);
+                            groupstartTimes.put(group_id, System.currentTimeMillis());
 
                             Map<String, Object> file_info = new LinkedHashMap<>();
                             file_info.put("ts_names", ts_names);
@@ -497,6 +500,7 @@ public class HLSService extends Service {
                             group_map.put(download_id, download_map);
 
                             groups.put(group_id, group_map);
+                            groupstartTimes.put(group_id, System.currentTimeMillis());
                         }
                     }
                     break;

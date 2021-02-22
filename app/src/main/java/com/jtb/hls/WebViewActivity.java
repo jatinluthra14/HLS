@@ -477,15 +477,24 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
             }
 
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Log.d("HLS_CurrentURL", request.getUrl().getHost());
+                Uri requestUri = request.getUrl();
+                String path = requestUri.toString();
+                Log.d("HLS_CurrentURL", requestUri.getHost());
                 Log.d("HLS_CurrentURL", "Current URL: " + current_url);
                 Uri curl = Uri.parse(current_url.trim());
-                if (!(request.getUrl().getHost().contains(curl.getHost().replace("www.", "").replace(".com", "")) || curl.getHost().equals(getString(R.string.domain_google)))) {
-                    Log.d(TAG, "Avoiding Redirect: " + request.getUrl());
+                if (!(requestUri.getHost().contains(curl.getHost().replace("www.", "").replace(".com", "")) || curl.getHost().equals(getString(R.string.domain_google)))) {
+                    String spath = Util.clearQuery(path);
+                    if (spath.endsWith(".m3u8") || spath.endsWith(".mp4") || spath.endsWith(".vid") && !(spath.endsWith(".ts"))) {
+                        if (!(hlsStack.containsKey(path))) {
+                            Log.d(TAG, "New Media Url: " + path);
+                            resolveMedia(path);
+                        }
+                    }
+                    Log.d(TAG, "Avoiding Redirect: " + path);
                     return true;
                 }
-                Log.d(TAG, "Redirecting to: " + request.getUrl().toString());
-                current_url = request.getUrl().toString();
+                Log.d(TAG, "Redirecting to: " + path);
+                current_url = path;
                 editText.setText(current_url);
                 goButton.performClick();
                 return true;
@@ -659,8 +668,8 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                                     });
                                 }
                             });
+                            Toast.makeText(WebViewActivity.this, "Parsing URL!", Toast.LENGTH_LONG).show();
                         }
-                        Toast.makeText(WebViewActivity.this, "Parsing URL!", Toast.LENGTH_LONG).show();
                         selected_path = item_title.substring(item_title.indexOf("] ")+1).trim();
 
                         Map<String, Object> map = hlsStack.get(selected_path);
