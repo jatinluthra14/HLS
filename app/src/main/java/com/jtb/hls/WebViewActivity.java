@@ -72,7 +72,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     Map<String, String> streamStack;
     Map<String, ArrayList<String>> m3u8_ts_map;
     Queue<String> allRequests, mediaRequests;
-    String selected_path, current_url = "", view_mode = "mobile", TAG="HLS_WebView", RequestTAG="HLS_Request";
+    String selected_path = "", current_url = "", view_mode = "mobile", TAG="HLS_WebView", RequestTAG="HLS_Request";
     TextView bubble_text;
     int stream_flag = 0, min1_flag = 0;
 
@@ -167,8 +167,12 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                                 int ts_flag = 0;
                                 for (String line : lines) {
                                     if (line.contains("#EXTINF")) {
-                                        Double duration = Double.parseDouble(line.replace("#EXTINF:", "").replace(",", "").trim());
-                                        total_duration += duration;
+                                        try {
+                                            Double duration = Double.parseDouble(line.replace("#EXTINF:", "").replace(",", "").trim());
+                                            total_duration += duration;
+                                        } catch (NumberFormatException e) {
+                                            Log.e(TAG, e.toString());
+                                        }
                                         ts_flag = 1;
                                     } else if (ts_flag == 1) {
                                         String final_url = Util.processM3U8Url(line, sreq_url);
@@ -179,9 +183,9 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                                 String formatted_duration = DateUtils.formatElapsedTime(total_duration.longValue());
                                 Log.d(TAG, "Total Duration: " + formatted_duration + " for Orig URL: " + orig_url + " and URL: " + url);
                                 m3u8_ts_map.put(sreq_url, ts_files);
-                                for (String ts: ts_files.toArray(new String[ts_files.size()])) {
-                                    Log.d(TAG, sreq_url + " : " + ts);
-                                }
+//                                for (String ts: ts_files.toArray(new String[ts_files.size()])) {
+//                                    Log.d(TAG, sreq_url + " : " + ts);
+//                                }
                                 map = hlsStack.get(orig_url);
                                 map.put("duration", formatted_duration);
                                 map.put("type", "m3u8");
@@ -639,59 +643,74 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                             min1_flag = min1_flag ^ 1;
                             return true;
                         } else if (item_title.equals("Parse Current URL")) {
-                            executor.execute(new Runnable() {
-                                @Override
-                                public void run() {
-                                    try {
-                                        VideoInfo streamInfo = YoutubeDL.getInstance().getInfo(current_url);
-                                        file_name[0] = streamInfo.getTitle().replace(" ", "_");
-                                        ArrayList<VideoFormat> vf = streamInfo.getFormats();
-                                        res_map.put("Audio Only", "bestaudio");
-                                        for(VideoFormat format: vf) {
-                                            if(format.getWidth() != 0 && format.getExt().equals("mp4")) {
-                                                String res = format.getWidth() + "x" + format.getHeight();
-                                                res_map.put(res, format.getFormatId());
+                            if (current_url != null && current_url.length() > 0) {
+                                executor.execute(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        try {
+                                            VideoInfo streamInfo = YoutubeDL.getInstance().getInfo(current_url);
+                                            file_name[0] = streamInfo.getTitle().replace(" ", "_");
+                                            if (file_name[0].length() > 40) {
+                                                String new_name = file_name[0];
+                                                int index = new_name.indexOf("_");
+                                                while(index >= 0) {
+                                                    int new_index = new_name.indexOf("_", index + 1);
+                                                    if (new_index > 40 || new_index < 0) break;
+                                                    index = new_index;
+                                                }
+                                                file_name[0] = new_name.substring(0, index);
                                             }
+                                            ArrayList<VideoFormat> vf = streamInfo.getFormats();
+                                            res_map.put("Audio Only", "bestaudio");
+                                            for(VideoFormat format: vf) {
+                                                if(format.getWidth() != 0 && format.getExt().equals("mp4")) {
+                                                    String res = format.getWidth() + "x" + format.getHeight();
+                                                    res_map.put(res, format.getFormatId());
+                                                }
 
+                                            }
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
                                         }
-                                    } catch (Exception e) {
-                                        e.printStackTrace();
+                                        runOnUiThread(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                for(String res : res_map.keySet()) {
+                                                    tri_menu.getMenu().add(res);
+                                                }
+                                                tri_menu.show();
+                                            }
+                                        });
                                     }
-                                    runOnUiThread(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            for(String res : res_map.keySet()) {
-                                                tri_menu.getMenu().add(res);
-                                            }
-                                            tri_menu.show();
-                                        }
-                                    });
-                                }
-                            });
-                            Toast.makeText(WebViewActivity.this, "Parsing URL!", Toast.LENGTH_LONG).show();
-                        }
-                        selected_path = item_title.substring(item_title.indexOf("] ")+1).trim();
-
-                        Map<String, Object> map = hlsStack.get(selected_path);
-                        if (map == null) {
-                            Log.d(TAG, "Map Null!!!!");
-                            return true;
-                        }
-                        for (Map.Entry<String, Object> mapElement : map.entrySet()) {
-                            String key = mapElement.getKey();
-                            String value = mapElement.getValue().toString();
-                            Log.d(TAG, key + ": " + value);
-                            if (key.contains("res_")) {
-                                String resolution = key.replace("res_", "").trim();
-                                res_map.put(resolution, value);
-                                sec_menu.getMenu().add(resolution);
+                                });
+                                Toast.makeText(WebViewActivity.this, "Parsing URL!", Toast.LENGTH_LONG).show();
+                            } else {
+                                Toast.makeText(WebViewActivity.this, "Empty URL!", Toast.LENGTH_LONG).show();
                             }
+                        } else {
+                            selected_path = item_title.substring(item_title.indexOf("] ")+1).trim();
+
+                            Map<String, Object> map = hlsStack.get(selected_path);
+                            if (map == null) {
+                                Log.d(TAG, "Map Null!!!!");
+                                return true;
+                            }
+                            for (Map.Entry<String, Object> mapElement : map.entrySet()) {
+                                String key = mapElement.getKey();
+                                String value = mapElement.getValue().toString();
+                                Log.d(TAG, key + ": " + value);
+                                if (key.contains("res_")) {
+                                    String resolution = key.replace("res_", "").trim();
+                                    res_map.put(resolution, value);
+                                    sec_menu.getMenu().add(resolution);
+                                }
+                            }
+                            if (res_map.size() > 0) {
+                                sec_menu.show();
+                                return true;
+                            }
+                            Toast.makeText(WebViewActivity.this, (String) map.get("strip_url"), Toast.LENGTH_LONG).show();
                         }
-                        if (res_map.size() > 0) {
-                            sec_menu.show();
-                            return true;
-                        }
-                        Toast.makeText(WebViewActivity.this, (String) map.get("strip_url"), Toast.LENGTH_LONG).show();
                         return true;
                     }
                 });
@@ -746,13 +765,17 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 break;
 
             case R.id.stream:
-                intent = new Intent(WebViewActivity.this, Exoplayer.class);
-                intent.putExtra("path", selected_path);
-                startActivity(intent);
+                if (selected_path.length() > 0) {
+                    intent = new Intent(WebViewActivity.this, Exoplayer.class);
+                    intent.putExtra("path", selected_path);
+                    startActivity(intent);
+                } else {
+                    Toast.makeText(WebViewActivity.this, "No URL Selected!", Toast.LENGTH_LONG).show();
+                }
                 break;
 
             case R.id.download:
-                if(selected_path!=null) {
+                if(selected_path.length() > 0) {
                     File dir_downloads = Environment.getExternalStorageDirectory();
                     String downloads = dir_downloads.getAbsolutePath() + "/Download/";
                     String file_hash = Util.getMD5EncryptedString(selected_path);
@@ -771,6 +794,8 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                     intent.setAction("ACTION_ENQUEUE");
                     startForegroundService(intent);
                     Toast.makeText(WebViewActivity.this, "Download Started!", Toast.LENGTH_LONG).show();
+                } else {
+                    Toast.makeText(WebViewActivity.this, "No URL Selected!", Toast.LENGTH_LONG).show();
                 }
                 break;
             case R.id.options:

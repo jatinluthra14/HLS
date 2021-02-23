@@ -354,15 +354,17 @@ public class HLSService extends Service {
             public void run() {
                 for (int group_id: groups.keySet()) {
                     Map<Integer, Map<String, Long>> group_map = groups.get(group_id);
-                    long total_progress = 0, speed = 0, eta, avg_eta, avg_speed;
+                    long total_progress = 0, speed = 0, eta = 0, avg_eta = 0, avg_speed;
                     for (int download_id: group_map.keySet()) {
                         Map<String, Long> download_map = group_map.get(download_id);
                         total_progress += download_map.get("progress");
                         speed += download_map.get("speed");
                     }
                     int numDownloads = group_map.keySet().size();
-                    eta = System.currentTimeMillis() - groupstartTimes.get(group_id);
-                    avg_eta = ( eta / total_progress ) * 100 * numDownloads - eta;
+                    if (total_progress > 0) {
+                        eta = System.currentTimeMillis() - groupstartTimes.get(group_id);
+                        avg_eta = ( eta / total_progress ) * 100 * numDownloads - eta;
+                    }
                     avg_speed = speed / numDownloads;
 
                     long eta_sec = Math.max(avg_eta / 1000, 0);
@@ -395,7 +397,7 @@ public class HLSService extends Service {
         Log.d(TAG, "Action: " + action);
         Bundle bundle = intent.getExtras();
         File dir_downloads = Environment.getExternalStorageDirectory();
-        String downloads = dir_downloads.getAbsolutePath() + "/Download/";
+        String downloads = dir_downloads.getAbsolutePath() + "/Download";
         int download_id, action_id;
         if(action != null) {
             switch (action) {
