@@ -393,7 +393,8 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
             settings.setLoadWithOverviewMode(true);
             settings.setUseWideViewPort(true);
             settings.setSupportZoom(true);
-            settings.setBuiltInZoomControls(false);
+            settings.setBuiltInZoomControls(true);
+            settings.setDisplayZoomControls(false);
             settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
             settings.setDomStorageEnabled(true);
             String UA = getString(R.string.mobile_UA);

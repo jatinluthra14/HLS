@@ -415,7 +415,7 @@ public class HLSService extends Service {
                             Map<Integer, Map<String, Long>> group_map = new LinkedHashMap<>();
                             for (String ts : ts_files.toArray(new String[ts_files.size()])) {
                                 i += 1;
-                                String fname = downloads + i + ".ts";
+                                String fname = downloads + "/" + i + ".ts";
                                 download_id = enqueueDownload(ts, fname, group_id);
                                 Map<String, Long> download_map = new LinkedHashMap<>();
                                 download_map.put("progress", (long) -1);
