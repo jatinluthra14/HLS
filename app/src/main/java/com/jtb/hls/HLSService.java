@@ -41,9 +41,11 @@ import com.yausername.youtubedl_android.YoutubeDLException;
 import com.yausername.youtubedl_android.YoutubeDLRequest;
 import com.yausername.youtubedl_android.YoutubeDLResponse;
 
+import org.apache.commons.io.FileUtils;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
+import java.io.IOException;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
@@ -151,6 +153,7 @@ public class HLSService extends Service {
         notificationBuilder.setAutoCancel(true)
                 .setOngoing(true)
                 .setDefaults(Notification.DEFAULT_ALL)
+                .setOnlyAlertOnce(true)
                 .setWhen(currentMillis)
                 .setSmallIcon(R.drawable.download_icon)
                 .setTicker("Hearty365")
@@ -241,6 +244,16 @@ public class HLSService extends Service {
                                             if (!ifDeleted) {
                                                 Log.e(TAG, "Error Deleting File: " + ts);
                                             }
+                                        }
+                                        try {
+                                            String fileName = new File(fname.replace(".mp4", "")).getName();
+                                            File dirName = new File(Environment.getExternalStorageDirectory(), "/Download/HLS_Temp/" + fileName);
+                                            if (dirName.exists()) {
+                                                FileUtils.deleteDirectory(dirName);
+                                            }
+                                        } catch (IOException e) {
+                                            Log.e(TAG, e.toString());
+                                            e.printStackTrace();
                                         }
                                     } else if (returnCode == RETURN_CODE_CANCEL) {
                                         Log.d(Config.TAG, "Async command execution cancelled by user.");
@@ -355,17 +368,23 @@ public class HLSService extends Service {
                 for (int group_id: groups.keySet()) {
                     Map<Integer, Map<String, Long>> group_map = groups.get(group_id);
                     long total_progress = 0, speed = 0, eta = 0, avg_eta = 0, avg_speed;
+                    int numDownloads = 0;
                     for (int download_id: group_map.keySet()) {
                         Map<String, Long> download_map = group_map.get(download_id);
                         total_progress += download_map.get("progress");
-                        speed += download_map.get("speed");
+                        long download_speed = download_map.get("speed");
+                        if (download_speed > 0) {
+                            speed += download_speed;
+                            numDownloads++;
+                        }
                     }
-                    int numDownloads = group_map.keySet().size();
+                    int totalDownloads = group_map.keySet().size();
                     if (total_progress > 0) {
                         eta = System.currentTimeMillis() - groupstartTimes.get(group_id);
-                        avg_eta = ( eta / total_progress ) * 100 * numDownloads - eta;
+                        avg_eta = ( eta / total_progress ) * 100 * totalDownloads - eta;
                     }
-                    avg_speed = speed / numDownloads;
+                    if (numDownloads > 0) avg_speed = speed / numDownloads;
+                    else avg_speed = 0;
 
                     long eta_sec = Math.max(avg_eta / 1000, 0);
                     long scale = (long)(Math.log10(avg_speed) / 3);
@@ -377,7 +396,7 @@ public class HLSService extends Service {
                     else if (scale == 2) formattedSpeed += " MB/s";
                     else formattedSpeed += " GB/s";
 
-                    notificationBuilder.setProgress(100 * numDownloads, (int) total_progress, false)
+                    notificationBuilder.setProgress(100 * totalDownloads, (int) total_progress, false)
                             .setSmallIcon(R.drawable.download_icon)
                             .setOngoing(true)
                             .setContentText("ETA: " + DateUtils.formatElapsedTime(eta_sec) + " Speed: " + formattedSpeed);
@@ -407,6 +426,12 @@ public class HLSService extends Service {
                         url = bundle.getString("url");
                         file = bundle.getString("file");
                         type = bundle.getString("type");
+                        String fileName = new File(file.replace(".mp4", "")).getName();
+                        File dirName = new File(Environment.getExternalStorageDirectory(), "Download/HLS_Temp/" + fileName);
+                        if(!dirName.exists()) {
+                            Log.d(TAG, "Creating Dir: " + dirName.getAbsolutePath());
+                            dirName.mkdirs();
+                        }
                         int group_id = url.hashCode();
                         if (type.equals("m3u8")) {
                             ArrayList<String> ts_files = bundle.getStringArrayList("ts_files");
@@ -415,7 +440,7 @@ public class HLSService extends Service {
                             Map<Integer, Map<String, Long>> group_map = new LinkedHashMap<>();
                             for (String ts : ts_files.toArray(new String[ts_files.size()])) {
                                 i += 1;
-                                String fname = downloads + "/" + i + ".ts";
+                                String fname = dirName.getAbsolutePath() + "/" + i + ".ts";
                                 download_id = enqueueDownload(ts, fname, group_id);
                                 Map<String, Long> download_map = new LinkedHashMap<>();
                                 download_map.put("progress", (long) -1);
@@ -632,6 +657,15 @@ public class HLSService extends Service {
 
         fetch.removeAllWithStatus(Status.COMPLETED);
         fetch.close();
+
+        try {
+            File tempDir = new File(Environment.getExternalStorageDirectory(), "/Download/HLS_Temp");
+            FileUtils.deleteDirectory(tempDir);
+        } catch(IOException e) {
+            Log.e(TAG, e.toString());
+            e.printStackTrace();
+        }
+
 
         Log.d(TAG, "Fetched Closed!");
         notificationManager.cancelAll();
