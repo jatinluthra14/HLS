@@ -26,6 +26,7 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
+import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.widget.EditText;
 import android.widget.ImageButton;
@@ -236,11 +237,14 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     }
 
     private void clearCookiesAndHistory() {
-        CookieManager.getInstance().setAcceptCookie(false);
         webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
         webView.getSettings().setAppCacheEnabled(false);
         webView.clearHistory();
         webView.clearCache(true);
+        CookieManager.getInstance().removeSessionCookies(null);
+        CookieManager.getInstance().removeAllCookies(null);
+        CookieManager.getInstance().flush();
+        WebStorage.getInstance().deleteAllData();
     }
 
     private void switchMode() {
@@ -294,6 +298,8 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_web_view);
+
+        CookieManager.getInstance().setAcceptCookie(true);
 
         executor = new Executor() {
             @Override
@@ -571,7 +577,9 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        Log.d("WebView", "Destroyed!");
+        clearCookiesAndHistory();
+        CookieManager.getInstance().setAcceptCookie(false);
+        Log.d(TAG, "WebView Destroyed!");
         h1.removeCallbacksAndMessages(r1);
         h2.removeCallbacksAndMessages(r2);
     }
@@ -802,6 +810,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
             case R.id.options:
                 final PopupMenu settingsMenu = new PopupMenu(WebViewActivity.this, v);
                 settingsMenu.getMenu().clear();
+                settingsMenu.getMenu().add("Wipe Cache");
                 settingsMenu.getMenu().add("Desktop Mode");
                 settingsMenu.getMenu().add("Logs");
                 settingsMenu.show();
@@ -810,6 +819,10 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                     @Override
                     public boolean onMenuItemClick(MenuItem item) {
                         switch (item.getTitle().toString()) {
+                            case "Wipe Cache":
+                                clearCookiesAndHistory();
+                                webView.reload();
+                                break;
                             case "Desktop Mode":
                                 switchMode();
                                 break;
