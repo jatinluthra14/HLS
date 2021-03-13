@@ -193,32 +193,71 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                                 hlsStack.put(orig_url, map);
                             }
                         } else if (spath.endsWith(".mp4") || spath.endsWith(".vid")) {
-                            BufferedInputStream in = new BufferedInputStream(response.body().byteStream(), 2048);
-                            byte[] buffer = new byte[4096];
-                            in.read(buffer);
+                            BufferedInputStream in = new BufferedInputStream(response.body().byteStream(), 128);
+                            byte[] buffer = new byte[128];
+                            int mvhd_idx = -1;
                             String mvhd = "6D766864";
+                            String mdat = "6D646174";
+
+                            in.read(buffer);
                             byte[] mvhd_buf = new byte[mvhd.length() / 2];
+
                             for (int i = 0; i < mvhd_buf.length; i++) {
                                 int index = i * 2;
                                 int j = Integer.parseInt(mvhd.substring(index, index + 2), 16);
                                 mvhd_buf[i] = (byte) j;
                             }
-                            int mvhd_idx = Util.indexOf(buffer, mvhd_buf) + 17;
+                            mvhd_idx = Util.indexOf(buffer, mvhd_buf);
+
+                            if (mvhd_idx == -1) {
+                                byte[] mdat_buf = new byte[mdat.length() / 2];
+                                for (int i = 0; i < mvhd_buf.length; i++) {
+                                    int index = i * 2;
+                                    int j = Integer.parseInt(mdat.substring(index, index + 2), 16);
+                                    mdat_buf[i] = (byte) j;
+                                }
+
+                                int mdat_idx = Util.indexOf(buffer, mdat_buf);
+                                if (mdat_idx != -1) {
+                                    StringBuilder sb = new StringBuilder();
+                                    for (int i=mdat_idx - 4; i < mdat_idx; i++) {
+                                        byte b = buffer[i];
+                                        sb.append(String.format("%02X", b));
+                                    }
+
+                                    int mdat_len = Integer.parseInt(sb.toString(), 16);
+                                    in.skip(mdat_len - 128);
+                                    in.read(buffer);
+
+                                    sb = new StringBuilder();
+                                    for (int i=0; i<buffer.length; i++) {
+                                        byte b = buffer[i];
+                                        sb.append(String.format("%02X", b));
+                                    }
+
+                                    mvhd_idx = Util.indexOf(buffer, mvhd_buf);
+                                }
+                            }
+
+                            mvhd_idx += 17;
                             StringBuilder sb = new StringBuilder();
                             for (int i=mvhd_idx; i<mvhd_idx+3; i++) {
                                 byte b = buffer[i];
                                 sb.append(String.format("%02X", b));
                             }
+
                             int time_scale = Integer.parseInt(sb.toString(), 16);
                             sb = new StringBuilder();
                             for (int i=mvhd_idx+4; i<mvhd_idx+7; i++) {
                                 byte b = buffer[i];
                                 sb.append(String.format("%02X", b));
                             }
+
                             int scaled_duration = Integer.parseInt(sb.toString(),16);
                             Double total_duration = ((double)scaled_duration) / ((double)time_scale);
                             String formatted_duration = DateUtils.formatElapsedTime(total_duration.longValue());
                             Log.d(TAG, "Orig URL: " + orig_url);
+
                             map = hlsStack.get(orig_url);
                             map.put("duration", formatted_duration);
                             map.put("type", "mp4");
