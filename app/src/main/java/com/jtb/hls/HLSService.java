@@ -71,7 +71,7 @@ public class HLSService extends Service {
     public static final String ACTION_PAUSE = "ACTION_PAUSE";
     public static final String ACTION_CANCEL = "ACTION_CANCEL";
 
-    String TAG = "HLS_Service", channel_id = "Download";
+    String TAG = "HLS_Service", NOTIF_TAG = "HLS_Notif", channel_id = "Download";
     NotificationManager notificationManager;
     NotificationCompat.Builder notificationBuilder;
     int dur_flag = 0, final_duration = 0;
@@ -207,6 +207,7 @@ public class HLSService extends Service {
                                     .setSmallIcon(R.drawable.refresh_icon)
                                     .setProgress(0,0,true);
                             notificationManager.notify(group_id, notificationBuilder.build());
+                            Log.d(NOTIF_TAG, "Encoding: " + group_id);
 
                             Map<String, Object> file_info = group_files.get(group_id);
                             String type = (String) file_info.get("type");
@@ -217,6 +218,7 @@ public class HLSService extends Service {
                                         .setSmallIcon(R.drawable.done_icon)
                                         .setProgress(0,0,false);
                                 notificationManager.notify(group_id, notificationBuilder.build());
+                                Log.d(NOTIF_TAG, "Completed MP4: " + group_id);
                                 fetch.removeGroup(group_id);
                                 return;
                             }
@@ -238,6 +240,7 @@ public class HLSService extends Service {
                                                 .setSmallIcon(R.drawable.done_icon)
                                                 .setProgress(0,0,false);
                                         notificationManager.notify(group_id, notificationBuilder.build());
+                                        Log.d(NOTIF_TAG, "Completed M3U8: " + group_id);
                                         for (String ts : ts_names) {
                                             File f = new File(ts);
                                             boolean ifDeleted = f.delete();
@@ -291,6 +294,7 @@ public class HLSService extends Service {
                                 .setOngoing(false)
                                 .setProgress(0,0,false);
                         notificationManager.notify(download.getGroup(), notificationBuilder.build());
+                        Log.d(NOTIF_TAG, "Failed: " + download.getGroup());
                     }
                 } catch (NullPointerException e) {
                     Log.e(TAG, e.getMessage());
@@ -344,7 +348,9 @@ public class HLSService extends Service {
                         .setOngoing(false)
                         .setContentText("Cancelled!");
                 notificationManager.notify(group_id, notificationBuilder.build());
+                Log.d(NOTIF_TAG, "Cancelled: " + group_id);
                 notif_ids.remove(group_id);
+                groups.remove(group_id);
             }
 
             @Override
@@ -479,18 +485,21 @@ public class HLSService extends Service {
                                                             .setSmallIcon(R.drawable.download_icon)
                                                             .setOngoing(true);
                                         notificationManager.notify(group_id, notificationBuilder.build());
+                                        Log.d(NOTIF_TAG, "Adding YT: " + group_id);
                                         YoutubeDLResponse youtubeDLResponse = YoutubeDL.getInstance().execute(request, (progress, etaInSeconds) -> {
                                             notificationBuilder.setProgress(100 , (int) progress, false)
                                                     .setSmallIcon(R.drawable.download_icon)
                                                     .setOngoing(true)
                                                     .setContentText("ETA: " + DateUtils.formatElapsedTime(etaInSeconds) );
                                             notificationManager.notify(group_id, notificationBuilder.build());
+                                            Log.d(NOTIF_TAG, "Added YT: " + group_id);
                                             if((int)progress == 100) {
                                                 notificationBuilder.setProgress(0, 0, true)
                                                         .setContentText("Encoding!")
                                                         .setSmallIcon(R.drawable.refresh_icon)
                                                         .setOngoing(true);
                                                 notificationManager.notify(group_id, notificationBuilder.build());
+                                                Log.d(NOTIF_TAG, "Encoding YT: " + group_id);
                                             }
                                         });
                                         String out = youtubeDLResponse.getOut();
@@ -503,6 +512,7 @@ public class HLSService extends Service {
                                                 .setSmallIcon(R.drawable.done_icon)
                                                 .setProgress(0,0,false);
                                         notificationManager.notify(group_id, notificationBuilder.build());
+                                        Log.d(NOTIF_TAG, "Completed YT: " + group_id);
                                     } catch (Exception e) {
                                         Log.e(TAG, "failed to initialize youtubedl-android", e);
                                         e.printStackTrace();
@@ -618,9 +628,11 @@ public class HLSService extends Service {
 
             notificationBuilder.mActions.clear();
             notificationBuilder.setProgress(0, 0, true)
+                                .setSmallIcon(R.drawable.download_icon)
                                 .addAction(getPauseAction(group_id))
                                 .addAction(getCancelAction(group_id));
             notificationManager.notify(group_id, notificationBuilder.build());
+            Log.d(NOTIF_TAG, "Enqueued: " + group_id);
 
         }, error -> {
 
@@ -638,6 +650,7 @@ public class HLSService extends Service {
                 .addAction(getResumeAction(group_id))
                 .addAction(getCancelAction(group_id));
         notificationManager.notify(group_id, notificationBuilder.build());
+        Log.d(NOTIF_TAG, "Paused: " + group_id);
     }
 
     @SuppressLint("RestrictedApi")
@@ -649,6 +662,7 @@ public class HLSService extends Service {
                 .addAction(getPauseAction(group_id))
                 .addAction(getCancelAction(group_id));
         notificationManager.notify(group_id, notificationBuilder.build());
+        Log.d(NOTIF_TAG, "Resumed: " + group_id);
     }
 
     @Override
