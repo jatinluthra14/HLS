@@ -41,6 +41,8 @@ import androidx.core.app.ActivityCompat;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.google.android.material.snackbar.BaseTransientBottomBar;
+import com.google.android.material.snackbar.Snackbar;
 import com.yausername.youtubedl_android.YoutubeDL;
 import com.yausername.youtubedl_android.mapper.VideoFormat;
 import com.yausername.youtubedl_android.mapper.VideoInfo;
@@ -51,6 +53,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Queue;
@@ -73,6 +76,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     Map<String, String> streamStack;
     Map<String, ArrayList<String>> m3u8_ts_map;
     Queue<String> allRequests, mediaRequests;
+    HashSet<String> allowedRedirectDomains;
     String selected_path = "", current_url = "", view_mode = "mobile", TAG="HLS_WebView", RequestTAG="HLS_Request";
     TextView bubble_text;
     int stream_flag = 0, min1_flag = 0;
@@ -435,6 +439,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         m3u8_ts_map = new LinkedHashMap<>();
         allRequests = new ConcurrentLinkedQueue<>();
         mediaRequests = new ConcurrentLinkedQueue<>();
+        allowedRedirectDomains = new HashSet<>();
 
         isWriteStoragePermissionGranted();
 
@@ -615,7 +620,8 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 Log.d("HLS_CurrentURL", requestUri.getHost());
                 Log.d("HLS_CurrentURL", "Current URL: " + current_url);
                 Uri curl = Uri.parse(current_url.trim());
-                if (!(requestUri.getHost().contains(curl.getHost().replace("www.", "").replace(".com", "")) || curl.getHost().equals(getString(R.string.domain_google)))) {
+
+                if (!(requestUri.getHost().contains(curl.getHost().replace("www.", "").replace(".com", "")) || curl.getHost().equals(getString(R.string.domain_google)) || allowedRedirectDomains.contains(requestUri.getHost().replace("www.", "").replace(".com", "")))) {
                     String spath = Util.clearQuery(path);
                     if (spath.endsWith(".m3u8") || spath.endsWith(".mp4") || spath.endsWith(".vid") && !(spath.endsWith(".ts"))) {
                         if (!(hlsStack.containsKey(path))) {
@@ -624,6 +630,18 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                         }
                     }
                     Log.d(TAG, "Avoiding Redirect: " + path);
+                    Snackbar redirectSnackbar = Snackbar.make(view, "Avoiding Redirect to " + requestUri.getHost(), BaseTransientBottomBar.LENGTH_LONG);
+                    redirectSnackbar.setAction("Allow (Session)", new View.OnClickListener() {
+                        @Override
+                        public void onClick(View view) {
+                            Log.d(TAG, "Got Permission, Redirecting to: " + path);
+                            allowedRedirectDomains.add(requestUri.getHost().replace("www.", "").replace(".com", ""));
+                            current_url = path;
+                            editText.setText(current_url);
+                            goButton.performClick();
+                        }
+                    });
+                    redirectSnackbar.show();
                     return true;
                 }
                 Log.d(TAG, "Redirecting to: " + path);
