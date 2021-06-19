@@ -42,6 +42,7 @@ import androidx.core.app.ActivityCompat;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.BaseTransientBottomBar;
 import com.google.android.material.snackbar.Snackbar;
 import com.yausername.youtubedl_android.YoutubeDL;
@@ -82,7 +83,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     Map<String, ArrayList<String>> m3u8_ts_map;
     Queue<String> allRequests;
     ConcurrentLinkedDeque<String> mediaRequests;
-    HashSet<String> allowedRedirectDomains;
+    HashSet<String> allowedRedirectDomains, blockedRedirectDomains, blockedRedirectDomainsForever;
     Set<String> markedAdDomains;
     String selected_path = "", current_url = "", view_mode = "mobile", TAG="HLS_WebView", RequestTAG="HLS_Request";
     TextView bubble_text;
@@ -417,6 +418,38 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         }
     }
 
+    private void displayRedirectDialog(String media_url) {
+        String[] options = {"Allow (Session)", "Block (Session)", "Block (Forever)"};
+        Uri requestUri = Uri.parse(media_url);
+        String domain = requestUri.getHost().replace("www.", "").replace(".com", "");
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("Redirection Settings")
+                .setItems(options, (dialogInterface, selectedOption) -> {
+                        Log.d(TAG, "Selected Option: " + selectedOption);
+                        switch (selectedOption) {
+                            case 0:
+                                Log.d(TAG, "Got Permission, Redirecting to: " + media_url);
+                                allowedRedirectDomains.add(domain);
+                                current_url = media_url;
+                                editText.setText(current_url);
+                                goButton.performClick();
+                                break;
+                            case 1:
+                                blockedRedirectDomains.add(domain);
+                                break;
+                            case 2:
+                                blockedRedirectDomainsForever.add(domain);
+                                sharedPrefEditor = sharedPref.edit();
+                                sharedPrefEditor.putStringSet("blockedRedirectDomainsForever", new HashSet<>(blockedRedirectDomainsForever));
+                                sharedPrefEditor.apply();
+                                break;
+                            default:
+                                Log.d(TAG, "Invalid Option");
+                        }
+                })
+        .show();
+    }
+
     private void resolveMedia(String media_path, Uri media_uri) {
         Log.d(TAG, "Media Path: " + media_path);
         String domain = media_uri.getHost().replace("www.", "").replace(".com", "");
@@ -455,7 +488,9 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         allRequests = new ConcurrentLinkedQueue<>();
         mediaRequests = new ConcurrentLinkedDeque<>();
         allowedRedirectDomains = new HashSet<>();
+        blockedRedirectDomains = new HashSet<>();
         sharedPref = this.getPreferences(Context.MODE_PRIVATE);
+        blockedRedirectDomainsForever = new HashSet<String>(sharedPref.getStringSet("blockedRedirectDomainsForever", new HashSet<>()));
         markedAdDomains =  new HashSet<String>(sharedPref.getStringSet("markedAdDomains", new HashSet<>()));
         Log.d(TAG, "Checking Marked Ad Domains");
         for (String domain : markedAdDomains) {
@@ -657,6 +692,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
 
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri requestUri = request.getUrl();
+                String domain = requestUri.getHost().replace("www.", "").replace(".com", "");
                 String path = requestUri.toString();
                 Log.d("HLS_CurrentURL", requestUri.getHost());
                 Log.d("HLS_CurrentURL", "Current URL: " + current_url);
@@ -671,18 +707,16 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                         }
                     }
                     Log.d(TAG, "Avoiding Redirect: " + path);
-                    Snackbar redirectSnackbar = Snackbar.make(view, "Avoiding Redirect to " + requestUri.getHost(), BaseTransientBottomBar.LENGTH_LONG);
-                    redirectSnackbar.setAction("Allow (Session)", new View.OnClickListener() {
-                        @Override
-                        public void onClick(View view) {
-                            Log.d(TAG, "Got Permission, Redirecting to: " + path);
-                            allowedRedirectDomains.add(requestUri.getHost().replace("www.", "").replace(".com", ""));
-                            current_url = path;
-                            editText.setText(current_url);
-                            goButton.performClick();
-                        }
-                    });
-                    redirectSnackbar.show();
+                    if (!(allowedRedirectDomains.contains(domain) || blockedRedirectDomains.contains(domain) || blockedRedirectDomainsForever.contains(domain))) {
+                        Snackbar redirectSnackbar = Snackbar.make(view, "Avoiding Redirect to " + requestUri.getHost(), BaseTransientBottomBar.LENGTH_LONG);
+                        redirectSnackbar.setAction("Redirect Settings", new View.OnClickListener() {
+                            @Override
+                            public void onClick(View view) {
+                                displayRedirectDialog(path);
+                            }
+                        });
+                        redirectSnackbar.show();
+                    }
                     return true;
                 }
                 Log.d(TAG, "Redirecting to: " + path);
