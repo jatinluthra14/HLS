@@ -3,6 +3,7 @@ package com.jtb.hls;
 import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -57,6 +58,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 
@@ -68,6 +70,7 @@ import okhttp3.Response;
 
 public class WebViewActivity extends AppCompatActivity implements View.OnClickListener {
 
+    SharedPreferences sharedPref;
     WebView webView;
     EditText editText;
     ProgressBar progressBar;
@@ -75,8 +78,10 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     Map<String, Map<String, Object>> hlsStack;
     Map<String, String> streamStack;
     Map<String, ArrayList<String>> m3u8_ts_map;
-    Queue<String> allRequests, mediaRequests;
+    Queue<String> allRequests;
+    ConcurrentLinkedDeque<String> mediaRequests;
     HashSet<String> allowedRedirectDomains;
+    HashSet<String> markedAdDomains;
     String selected_path = "", current_url = "", view_mode = "mobile", TAG="HLS_WebView", RequestTAG="HLS_Request";
     TextView bubble_text;
     int stream_flag = 0, min1_flag = 0;
@@ -409,9 +414,13 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         }
     }
 
-    private void resolveMedia(String media_path) {
+    private void resolveMedia(String media_path, Uri media_uri) {
         Log.d(TAG, "Media Path: " + media_path);
-        mediaRequests.add(media_path);
+        String domain = media_uri.getHost().replace("www.", "").replace(".com", "");
+        if (markedAdDomains.contains(domain))
+            mediaRequests.addLast(media_path);
+        else
+            mediaRequests.addFirst(media_path);
     }
 
     @JavascriptInterface
@@ -438,8 +447,14 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         streamStack = new LinkedHashMap<>();
         m3u8_ts_map = new LinkedHashMap<>();
         allRequests = new ConcurrentLinkedQueue<>();
-        mediaRequests = new ConcurrentLinkedQueue<>();
+        mediaRequests = new ConcurrentLinkedDeque<>();
         allowedRedirectDomains = new HashSet<>();
+        markedAdDomains = new HashSet<>();
+        sharedPref = this.getPreferences(Context.MODE_PRIVATE);
+        markedAdDomains = (HashSet<String>) sharedPref.getStringSet("markedAdDomains", markedAdDomains);
+        for (String domain : markedAdDomains) {
+            Log.d(TAG, "Marked Ad Domain Init: " + domain);
+        }
 
         isWriteStoragePermissionGranted();
 
@@ -594,7 +609,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                     if (spath.endsWith(".m3u8") || spath.endsWith(".mp4") || spath.endsWith(".vid") && !(spath.endsWith(".ts")) || (request.getRequestHeaders().containsKey("Range"))) {
                         if (!(hlsStack.containsKey(path))) {
                             Log.d(TAG, "New Media Url: " + path);
-                            resolveMedia(path);
+                            resolveMedia(path, request.getUrl());
                         }
                     } else if (lpath.contains(".jpg") || lpath.contains(".jpeg")) {
                         Bitmap bitmap = Glide.with(view).asBitmap().diskCacheStrategy(DiskCacheStrategy.ALL).load(path).submit().get();
@@ -626,7 +641,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                     if (spath.endsWith(".m3u8") || spath.endsWith(".mp4") || spath.endsWith(".vid") && !(spath.endsWith(".ts"))) {
                         if (!(hlsStack.containsKey(path))) {
                             Log.d(TAG, "New Media Url: " + path);
-                            resolveMedia(path);
+                            resolveMedia(path, requestUri);
                         }
                     }
                     Log.d(TAG, "Avoiding Redirect: " + path);
@@ -952,6 +967,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 settingsMenu.getMenu().clear();
                 settingsMenu.getMenu().add("Wipe Cache");
                 settingsMenu.getMenu().add("Desktop Mode");
+                settingsMenu.getMenu().add("Mark Media URL as Ad");
                 settingsMenu.getMenu().add("Logs");
                 settingsMenu.show();
 
@@ -965,6 +981,15 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                                 break;
                             case "Desktop Mode":
                                 switchMode();
+                                break;
+                            case "Mark Media URL as Ad":
+                                Uri media_uri = Uri.parse(selected_path);
+                                String domain = media_uri.getHost().replace("www.", "").replace(".com", "");
+                                markedAdDomains.add(domain);
+                                SharedPreferences.Editor editor = sharedPref.edit();
+                                editor.putStringSet("markedAdDomains", markedAdDomains);
+                                editor.apply();
+                                Log.d(TAG, "Marked Ad Domain: " + domain);
                                 break;
                             case "Logs":
                                 Intent intent1 = new Intent(WebViewActivity.this, AppLogs.class);
