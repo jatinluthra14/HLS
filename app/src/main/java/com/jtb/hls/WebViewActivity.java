@@ -58,6 +58,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
@@ -71,6 +72,7 @@ import okhttp3.Response;
 public class WebViewActivity extends AppCompatActivity implements View.OnClickListener {
 
     SharedPreferences sharedPref;
+    SharedPreferences.Editor sharedPrefEditor;
     WebView webView;
     EditText editText;
     ProgressBar progressBar;
@@ -81,10 +83,11 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     Queue<String> allRequests;
     ConcurrentLinkedDeque<String> mediaRequests;
     HashSet<String> allowedRedirectDomains;
-    HashSet<String> markedAdDomains;
+    Set<String> markedAdDomains;
     String selected_path = "", current_url = "", view_mode = "mobile", TAG="HLS_WebView", RequestTAG="HLS_Request";
     TextView bubble_text;
     int stream_flag = 0, min1_flag = 0;
+    boolean ad_parsing_flag;
 
     Handler h1,h2;
     Runnable r1,r2;
@@ -417,8 +420,11 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     private void resolveMedia(String media_path, Uri media_uri) {
         Log.d(TAG, "Media Path: " + media_path);
         String domain = media_uri.getHost().replace("www.", "").replace(".com", "");
-        if (markedAdDomains.contains(domain))
-            mediaRequests.addLast(media_path);
+        Log.d(TAG, "Checking Domain for Ads: " + domain);
+        if (markedAdDomains.contains(domain)) {
+            if (ad_parsing_flag)
+                mediaRequests.addLast(media_path);
+        }
         else
             mediaRequests.addFirst(media_path);
     }
@@ -449,12 +455,14 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         allRequests = new ConcurrentLinkedQueue<>();
         mediaRequests = new ConcurrentLinkedDeque<>();
         allowedRedirectDomains = new HashSet<>();
-        markedAdDomains = new HashSet<>();
         sharedPref = this.getPreferences(Context.MODE_PRIVATE);
-        markedAdDomains = (HashSet<String>) sharedPref.getStringSet("markedAdDomains", markedAdDomains);
+        markedAdDomains =  new HashSet<String>(sharedPref.getStringSet("markedAdDomains", new HashSet<>()));
+        Log.d(TAG, "Checking Marked Ad Domains");
         for (String domain : markedAdDomains) {
             Log.d(TAG, "Marked Ad Domain Init: " + domain);
         }
+        ad_parsing_flag = sharedPref.getBoolean("ad_parsing_flag", true);
+        Log.d(TAG, "Ad Parsing Flag Init: " + ad_parsing_flag);
 
         isWriteStoragePermissionGranted();
 
@@ -468,7 +476,15 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
             @Override
             public void run() {
                 count++;
-                bubble_text.setText(String.valueOf(hlsStack.size() + 1));
+                int bubble_size = 1;
+                for (Map.Entry<String, Map<String, Object>> mapElement : hlsStack.entrySet()) {
+                    String key = mapElement.getKey();
+                    Map<String, Object> value = mapElement.getValue();
+                    String duration = value.get("duration").toString();
+                    if (duration.equals("00:00")) continue;
+                    bubble_size++;
+                }
+                bubble_text.setText(String.valueOf(bubble_size));
                 if(webView.getUrl() != null && !(current_url.equals(webView.getUrl()))) {
                     current_url = webView.getUrl();
                     if(!(editText.getText().equals(current_url))) editText.setText(current_url);
@@ -968,6 +984,10 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                 settingsMenu.getMenu().add("Wipe Cache");
                 settingsMenu.getMenu().add("Desktop Mode");
                 settingsMenu.getMenu().add("Mark Media URL as Ad");
+                if (ad_parsing_flag)
+                    settingsMenu.getMenu().add("Disable Ad Parsing");
+                else
+                    settingsMenu.getMenu().add("Enable Ad Parsing");
                 settingsMenu.getMenu().add("Logs");
                 settingsMenu.show();
 
@@ -986,10 +1006,22 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                                 Uri media_uri = Uri.parse(selected_path);
                                 String domain = media_uri.getHost().replace("www.", "").replace(".com", "");
                                 markedAdDomains.add(domain);
-                                SharedPreferences.Editor editor = sharedPref.edit();
-                                editor.putStringSet("markedAdDomains", markedAdDomains);
-                                editor.apply();
+                                sharedPrefEditor = sharedPref.edit();
+                                sharedPrefEditor.putStringSet("markedAdDomains", new HashSet<>(markedAdDomains));
+                                sharedPrefEditor.apply();
                                 Log.d(TAG, "Marked Ad Domain: " + domain);
+                                break;
+                            case "Disable Ad Parsing":
+                                ad_parsing_flag = false;
+                                sharedPrefEditor = sharedPref.edit();
+                                sharedPrefEditor.putBoolean("ad_parsing_flag", ad_parsing_flag);
+                                sharedPrefEditor.apply();
+                                break;
+                            case "Enable Ad Parsing":
+                                ad_parsing_flag = true;
+                                sharedPrefEditor = sharedPref.edit();
+                                sharedPrefEditor.putBoolean("ad_parsing_flag", ad_parsing_flag);
+                                sharedPrefEditor.apply();
                                 break;
                             case "Logs":
                                 Intent intent1 = new Intent(WebViewActivity.this, AppLogs.class);
