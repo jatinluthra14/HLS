@@ -87,7 +87,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     String selected_path = "", current_url = "", view_mode = "mobile", TAG="HLS_WebView", RequestTAG="HLS_Request";
     TextView bubble_text;
     int stream_flag = 0, min1_flag = 0;
-    boolean ad_parsing_flag;
+    boolean ad_parsing_flag, ad_blocking_flag;
 
     Handler h1,h2;
     Runnable r1,r2;
@@ -463,6 +463,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
         }
         ad_parsing_flag = sharedPref.getBoolean("ad_parsing_flag", true);
         Log.d(TAG, "Ad Parsing Flag Init: " + ad_parsing_flag);
+        ad_blocking_flag = sharedPref.getBoolean("ad_blocking_flag", false);
 
         isWriteStoragePermissionGranted();
 
@@ -617,6 +618,15 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 try {
                     String path = request.getUrl().toString().trim();
+                    String domain = request.getUrl().getHost().replace("www.", "").replace(".com", "");
+                    if (ad_blocking_flag && markedAdDomains.contains(domain)) {
+                        Log.d(RequestTAG, "Blocking Ad with URL: " + path);
+                        return new WebResourceResponse(
+                                "text/html",
+                                "UTF-8",
+                                null
+                        );
+                    }
                     String spath = Util.clearQuery(path);
                     String lpath = path.toLowerCase();
                     allRequests.add(path);
@@ -988,6 +998,10 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                     settingsMenu.getMenu().add("Disable Ad Parsing");
                 else
                     settingsMenu.getMenu().add("Enable Ad Parsing");
+                if (ad_blocking_flag)
+                    settingsMenu.getMenu().add("Unblock Ads");
+                else
+                    settingsMenu.getMenu().add("Block Ads");
                 settingsMenu.getMenu().add("Logs");
                 settingsMenu.show();
 
@@ -1021,6 +1035,18 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
                                 ad_parsing_flag = true;
                                 sharedPrefEditor = sharedPref.edit();
                                 sharedPrefEditor.putBoolean("ad_parsing_flag", ad_parsing_flag);
+                                sharedPrefEditor.apply();
+                                break;
+                            case "Block Ads":
+                                ad_blocking_flag = true;
+                                sharedPrefEditor = sharedPref.edit();
+                                sharedPrefEditor.putBoolean("ad_blocking_flag", ad_blocking_flag);
+                                sharedPrefEditor.apply();
+                                break;
+                            case "Unblock Ads":
+                                ad_blocking_flag = false;
+                                sharedPrefEditor = sharedPref.edit();
+                                sharedPrefEditor.putBoolean("ad_blocking_flag", ad_blocking_flag);
                                 sharedPrefEditor.apply();
                                 break;
                             case "Logs":
