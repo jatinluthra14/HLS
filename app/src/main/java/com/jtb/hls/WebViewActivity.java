@@ -89,6 +89,7 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
     TextView bubble_text;
     int stream_flag = 0, min1_flag = 0;
     boolean ad_parsing_flag, ad_blocking_flag;
+    long current_page_time = 0;
 
     Handler h1,h2;
     Runnable r1,r2;
@@ -729,6 +730,14 @@ public class WebViewActivity extends AppCompatActivity implements View.OnClickLi
             @Override
             public void onPageFinished(WebView view, String url) {
                 Log.d(TAG, "Page Finished loading: " + url);
+                long end_time = System.currentTimeMillis();
+                Log.d(TAG, "Page Time Taken: " + (end_time - current_page_time) / 1000.0f);
+            }
+
+            @Override
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                Log.d(TAG, "Page Started loading: " + url);
+                current_page_time = System.currentTimeMillis();
             }
         });
 
